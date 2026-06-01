@@ -1,0 +1,20 @@
+# Dataset
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual Environments
+venv/
+.venv/
+
+# Models
+*.pkl
+*.joblib
+
+# Environment Variables
+.env
+
+# VS Code
+.vscode/
