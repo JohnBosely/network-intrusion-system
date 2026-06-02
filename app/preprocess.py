@@ -64,8 +64,18 @@ def clean_data(combine_df):
     return combine_df
 
 def remove_infinite_values(combine_df):
-    combine_df = combine_df.replace([np.inf, -np.inf], np.nan)
-    combine_df = combine_df.dropna()
+    print("Filtering out infinite and null rows efficiently...")
+    
+    # 1. Find numerical columns
+    num_cols = combine_df.select_dtypes(include=[np.number]).columns
+    
+    # 2. Check for bad values
+    is_inf = np.isinf(combine_df[num_cols]).any(axis=1)
+    is_null = combine_df[num_cols].isnull().any(axis=1)
+    
+    # 3. FIX: Slice the dataframe directly without using .copy()
+    combine_df = combine_df[~(is_inf | is_null)]
+    
     return combine_df
 
 def clean_labels(combine_df):
@@ -97,6 +107,27 @@ def encode_labels(y):
     y_encoded = le.fit_transform(y)
     return y_encoded
 
+def train_xgb(X_train_scaled, y_train):
+    print("\n--- Training XGBoost Classifier ---")
+    
+    model = XGBClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+    
+    model.fit(X_train_scaled, y_train)
+    
+    print("Training Complete!")
+    return model
+
+
+def evaluate_model(model, X_test_scaled, y_test):
+    print("\n--- Evaluating Model Performance ---")
+    # 1. Ask the model to predict the classes for the test features
+    y_pred = model.predict(X_test_scaled)
+    
+    # 2. Generate a comprehensive metrics report
+    report = classification_report(y_test, y_pred)
+    
+    print("Classification Report:")
+    print(report)
 
 combine_df = load_data()
 cleaned_df = clean_data(combine_df)
@@ -120,5 +151,6 @@ print(f"Testing features shape: {X_test.shape}")
 X_train_scaled, X_test_scaled = scale_features(X_train, X_test)
 
 print(f"\n--- Feature Scaling Complete ---")
-print(f"Scaled training sample (first row):\n{X_train_scaled[0][:5]}") 
 
+print(f"\n--- XGBOOST TRAINING ---")
+xgb_model = train_xgb(X_train_scaled, y_train)
