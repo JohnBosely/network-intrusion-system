@@ -79,9 +79,16 @@ def remove_infinite_values(combine_df):
     return combine_df
 
 def clean_labels(combine_df):
-    # 1. Fix the web attacks by searching for any label containing "Web Attack"
-    # This automatically catches the broken characters and names them beautifully!
-    combine_df.loc[combine_df['Label'].str.contains('Web Attack', na=False, case=False), 'Label'] = 'Web Attack'
+    """
+    Converts the multi-class labels into binary labels.
+    0 = BENIGN (Normal traffic)
+    1 = ATTACK (Any type of malicious traffic)
+    """
+    # Force the column to string type and strip any accidental whitespace
+    combine_df['Label'] = combine_df['Label'].astype(str).str.strip()
+    
+    # Map 'BENIGN' to 0, and everything else to 1
+    combine_df['Label'] = combine_df['Label'].apply(lambda x: 0 if x == 'BENIGN' else 1)
     
     return combine_df
 
@@ -98,14 +105,63 @@ def split_features_target(combine_df):
 
     return X,y
 
-def split_train_test(X, y_encoded):
-    X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded)
+def preprocess_data(data_dir_path, sample_size=100000):
+    data_dir = Path(data_dir_path)
+
+    # 1. Dynamically search for files matching the days of the week
+    train_files = []
+    for day in ["Tuesday", "Wednesday", "Thursday"]:
+        # Looks for files like *Tuesday*.csv, *Wednesday*.csv, etc.
+        matched_files = list(data_dir.glob(f"*{day}*.csv"))
+        train_files.extend(matched_files)
+
+    # Do the same dynamic look up for Friday
+    test_files = list(data_dir.glob("*Friday*.csv"))
+
+    # Quick sanity check printout so you can see what Python found
+    print(f" Found {len(train_files)} training files.")
+    print(f" Found {len(test_files)} testing files.")
+
+    if not train_files or not test_files:
+        raise FileNotFoundError(
+            f"Could not find day-based files in {data_dir_path}. "
+            f"Check your folder names!"
+        )
+
+    # 2. Build the Training DataFrame (Tue + Wed + Thu)
+    train_dfs = [pd.read_csv(f) for f in train_files]
+    train_df = pd.concat(train_dfs, ignore_index=True)
+    train_df.columns = train_df.columns.str.strip()
+
+    # 3. Build the Testing DataFrame (Friday only)
+    test_dfs = [pd.read_csv(f) for f in test_files]
+    test_df = pd.concat(test_dfs, ignore_index=True)
+    test_df.columns = test_df.columns.str.strip()
+    
+    # ... (the rest of your cleaning and sampling code stays exactly the same!)
+    # 4. Clean up missing/infinite values (using your existing functions)
+    train_df = remove_infinite_values(train_df)
+    train_df = clean_labels(train_df)
+
+    test_df = remove_infinite_values(test_df)
+    test_df = clean_labels(test_df)
+
+    # 5. Take your controlled sample sizes so your PC doesn't freeze
+    # We sample 100k from training, and a proportional 25k from testing
+    train_df = train_df.sample(n=sample_size, random_state=42)
+    test_df = test_df.sample(n=int(sample_size * 0.25), random_state=42)
+
+    # 6. Split into X and y directly by day! No random train_test_split needed.
+    X_train = train_df.drop(columns=["Label"])
+    y_train = train_df["Label"]
+
+    X_test = test_df.drop(columns=["Label"])
+    y_test = test_df["Label"]
+
     return X_train, X_test, y_train, y_test
 
 def encode_labels(y):
-    le = LabelEncoder()
-    y_encoded = le.fit_transform(y)
-    return y_encoded
+    return y
 
 def train_xgb(X_train_scaled, y_train):
     print("\n--- Training XGBoost Classifier ---")
@@ -128,21 +184,38 @@ def evaluate_model(model, X_test_scaled, y_test):
     
     print("Classification Report:")
     print(report)
+    return report
 
-combine_df = load_data()
-cleaned_df = clean_data(combine_df)
+# combine_df = load_data()
+# cleaned_df = clean_data(combine_df)
 
-X, y = split_features_target(cleaned_df)
-print(f"\n--- Features and Target Split Complete ---")
-print(f"Features shape (X): {X.shape}")
-print(f"Target shape (y): {y.shape}")
+# cleaned_df = cleaned_df.sample(
+#     n=100_000,
+#     random_state=42
+# )
 
-y_encoded = encode_labels(y)
-print(f"\n--- Label Encoding Complete ---")
-print(f"Original text sample: {y.head(5).values}")
-print(f"Encoded numeric sample: {y_encoded[:5]}")
+# X, y = split_features_target(cleaned_df)
+# print(f"\n--- Features and Target Split Complete ---")
+# print(f"Features shape (X): {X.shape}")
+# print(f"Target shape (y): {y.shape}")
 
-X_train, X_test, y_train, y_test = split_train_test(X, y_encoded)
+# y_encoded = encode_labels(y)
+# print(f"\n--- Label Encoding Complete ---")
+# print(f"Original text sample: {y.head(5).values}")
+# print(f"Encoded numeric sample: {y_encoded[:5]}")
+
+# X_train, X_test, y_train, y_test = split_train_test(X, y_encoded)
+
+# --- ADD THIS NEW LINE TO REPLACE THE BLOCK ABOVE ---
+
+# 1. Define the path to your data folder (using your existing path logic)
+script_dir = Path(__file__).resolve().parent
+data_directory = script_dir.parent / "data" / "MachineLearningCVE"
+
+# 2. Call the function to get your clean, day-split data directly
+X_train, X_test, y_train, y_test = preprocess_data(
+    data_dir_path=data_directory, sample_size=100000
+)
 
 print(f"\n--- Train-Test Split Complete ---")
 print(f"Training features shape: {X_train.shape}")
@@ -154,3 +227,13 @@ print(f"\n--- Feature Scaling Complete ---")
 
 print(f"\n--- XGBOOST TRAINING ---")
 xgb_model = train_xgb(X_train_scaled, y_train)
+evaluation = evaluate_model(xgb_model, X_test_scaled, y_test)
+print(evaluation)
+
+# Get feature importances from your trained XGBoost model
+importances = xgb_model.feature_importances_
+feature_names = X_train.columns
+
+# Pair them up, sort them, and look at the top 599
+feature_imp_df = pd.DataFrame({'Feature': feature_names, 'Importance': importances})
+print(feature_imp_df.sort_values(by='Importance', ascending=False).head(5))
