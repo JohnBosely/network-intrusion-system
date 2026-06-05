@@ -234,6 +234,6 @@ print(evaluation)
 importances = xgb_model.feature_importances_
 feature_names = X_train.columns
 
-# Pair them up, sort them, and look at the top 599
+# Pair them up, sort them, and look at the top 5
 feature_imp_df = pd.DataFrame({'Feature': feature_names, 'Importance': importances})
 print(feature_imp_df.sort_values(by='Importance', ascending=False).head(5))
