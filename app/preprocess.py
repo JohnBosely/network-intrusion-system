@@ -160,7 +160,7 @@ def evaluate_model(model, X_test_scaled, y_test):
     return report
 
 
-# --- MAIN EXECUTION PIPELINE ---
+# --- MAIN EXECUTION PIPELINE --
 
 # 1. Setup paths
 script_dir = Path(__file__).resolve().parent
