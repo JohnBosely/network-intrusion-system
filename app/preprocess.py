@@ -1,7 +1,8 @@
-from xgboost import XGBClassifier
-from sklearn.metrics import accuracy_score, r2_score, classification_report, roc_auc_score, confusion_matrix, roc_curve, RocCurveDisplay
+from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix, roc_curve, RocCurveDisplay
 from sklearn.model_selection import train_test_split
+from xgboost import XGBClassifier
 from sklearn.neighbors import KNeighborsClassifier
+from lightgbm import LGBMClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
@@ -151,6 +152,17 @@ def train_svm(X_train_scaled, y_train):
     print("Training Complete!")
     return model
 
+from lightgbm import LGBMClassifier
+
+def train_lgbm(X_train_scaled, y_train):
+    print("\n--- Training LightGBM Classifier ---")
+    # n_jobs=-1 utilizes all available CPU cores
+    # verbose=-1 silences unnecessary internal logging messages
+    model = LGBMClassifier(random_state=42, n_jobs=-1, verbose=-1)
+    model.fit(X_train_scaled, y_train)
+    print("Training Complete!")
+    return model
+
 def evaluate_model(model, X_test_scaled, y_test):
     print("\n--- Evaluating Model Performance ---")
     y_pred = model.predict(X_test_scaled)
@@ -180,46 +192,46 @@ print(f"Testing features shape: {X_test.shape}")
 X_train_scaled, X_test_scaled = scale_features(X_train, X_test)
 print(f"--- Feature Scaling Complete ---")
 
-# 4. Train Support Vector Machine Model
-print(f"\n--- SUPPORT VECTOR MACHINE TRAINING ---")
-svm_model = train_svm(X_train_scaled, y_train)
+# 4. Train LightGBM Model
+print(f"\n--- LIGHTGBM TRAINING ---")
+lgbm_model = train_lgbm(X_train_scaled, y_train)
 
 # 5. Evaluate Performance (with ROC-AUC)
-print("\n--- Evaluating SVM Performance ---")
-y_pred_svm = svm_model.predict(X_test_scaled)
+print("\n--- Evaluating LightGBM Performance ---")
+y_pred_lgbm = lgbm_model.predict(X_test_scaled)
 
-# Get confidence scores via decision_function for Class 1 (Attacks)
-y_scores_svm = svm_model.decision_function(X_test_scaled)
+# Get raw probabilities for Class 1 (Attacks)
+y_probs_lgbm = lgbm_model.predict_proba(X_test_scaled)[:, 1]
 
 # Calculate the ultimate metric
-roc_auc_svm = roc_auc_score(y_test, y_scores_svm)
+roc_auc_lgbm = roc_auc_score(y_test, y_probs_lgbm)
 
 print("Classification Report:")
-print(classification_report(y_test, y_pred_svm))
+print(classification_report(y_test, y_pred_lgbm))
 
 print("\n--- Raw Confusion Matrix (Actual Counts) ---")
-print(confusion_matrix(y_test, y_pred_svm))
+print(confusion_matrix(y_test, y_pred_lgbm))
 
-print(f"\n➔ SVM ROC-AUC Score: {roc_auc_svm:.5f}")
+print(f"\n➔ LightGBM ROC-AUC Score: {roc_auc_lgbm:.5f}")
 
-# 6. Breakdown of Missed Attacks for SVM
-missed_mask_svm = (y_test == 1) & (y_pred_svm == 0)
-missed_attacks_svm = y_test_raw[missed_mask_svm]
+# 6. Breakdown of Missed Attacks for LightGBM
+missed_mask_lgbm = (y_test == 1) & (y_pred_lgbm == 0)
+missed_attacks_lgbm = y_test_raw[missed_mask_lgbm]
 
-print(f"\n--- Breakdown of the {len(missed_attacks_svm)} Missed Attacks ---")
-if len(missed_attacks_svm) > 0:
-    print(pd.Series(missed_attacks_svm).value_counts())
+print(f"\n--- Breakdown of the {len(missed_attacks_lgbm)} Missed Attacks ---")
+if len(missed_attacks_lgbm) > 0:
+    print(pd.Series(missed_attacks_lgbm).value_counts())
 else:
     print("Zero missed attacks!")
 
-# --- Plot the SVM ROC Curve ---
+# --- Plot the LightGBM ROC Curve ---
 print("\nGenerating ROC Curve plot...")
 plt.figure(figsize=(8, 6))
 RocCurveDisplay.from_predictions(
     y_test, 
-    y_scores_svm, 
-    name="Support Vector Machine", 
-    color="purple",
+    y_probs_lgbm, 
+    name="LightGBM", 
+    color="teal",
     linewidth=2
 )
 plt.plot([0, 1], [0, 1], color="navy", linestyle="--", label="Random Guess (0.50)")
@@ -227,10 +239,63 @@ plt.xlim([0.0, 1.0])
 plt.ylim([0.0, 1.05])
 plt.xlabel("False Positive Rate (False Alarms)")
 plt.ylabel("True Positive Rate (Caught Attacks)")
-plt.title("Support Vector Machine ROC Curve")
+plt.title("LightGBM ROC Curve")
 plt.legend(loc="lower right")
 plt.grid(True, linestyle="--", alpha=0.6)
 plt.show()
+
+# <--- 4. Train Support Vector Machine Model --->
+# print(f"\n--- SUPPORT VECTOR MACHINE TRAINING ---")
+# svm_model = train_svm(X_train_scaled, y_train)
+
+# # 5. Evaluate Performance (with ROC-AUC)
+# print("\n--- Evaluating SVM Performance ---")
+# y_pred_svm = svm_model.predict(X_test_scaled)
+
+# # Get confidence scores via decision_function for Class 1 (Attacks)
+# y_scores_svm = svm_model.decision_function(X_test_scaled)
+
+# # Calculate the ultimate metric
+# roc_auc_svm = roc_auc_score(y_test, y_scores_svm)
+
+# print("Classification Report:")
+# print(classification_report(y_test, y_pred_svm))
+
+# print("\n--- Raw Confusion Matrix (Actual Counts) ---")
+# print(confusion_matrix(y_test, y_pred_svm))
+
+# print(f"\n➔ SVM ROC-AUC Score: {roc_auc_svm:.5f}")
+
+# # 6. Breakdown of Missed Attacks for SVM
+# missed_mask_svm = (y_test == 1) & (y_pred_svm == 0)
+# missed_attacks_svm = y_test_raw[missed_mask_svm]
+
+# print(f"\n--- Breakdown of the {len(missed_attacks_svm)} Missed Attacks ---")
+# if len(missed_attacks_svm) > 0:
+#     print(pd.Series(missed_attacks_svm).value_counts())
+# else:
+#     print("Zero missed attacks!")
+
+# # --- Plot the SVM ROC Curve ---
+# print("\nGenerating ROC Curve plot...")
+# plt.figure(figsize=(8, 6))
+# RocCurveDisplay.from_predictions(
+#     y_test, 
+#     y_scores_svm, 
+#     name="Support Vector Machine", 
+#     color="purple",
+#     linewidth=2
+# )
+# plt.plot([0, 1], [0, 1], color="navy", linestyle="--", label="Random Guess (0.50)")
+# plt.xlim([0.0, 1.0])
+# plt.ylim([0.0, 1.05])
+# plt.xlabel("False Positive Rate (False Alarms)")
+# plt.ylabel("True Positive Rate (Caught Attacks)")
+# plt.title("Support Vector Machine ROC Curve")
+# plt.legend(loc="lower right")
+# plt.grid(True, linestyle="--", alpha=0.6)
+# plt.show()
+
 # <--- RANDOM FOREST --->
 # # 4. Train Random Forest Model
 # print(f"\n--- RANDOM FOREST TRAINING ---")
