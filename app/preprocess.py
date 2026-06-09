@@ -475,5 +475,5 @@ plt.show()
 # missed_attacks_df['Label'] = missed_attacks
 
 # print(f"\nSample of 5 missed attacks:\n")
-# # 6. Display the structural columns to analyze the patternss
+# # 6. Display the structural columns to analyze the patterns
 # print(missed_attacks_df[['Destination Port', 'Flow Duration', 'Total Fwd Packets', 'Label']].head())
