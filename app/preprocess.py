@@ -184,7 +184,7 @@ X_train, X_test, y_train, y_test, y_test_raw = preprocess_chronological(
     data_dir_path=data_directory, sample_size=100000
 )
 
-print(f"\n--- Train-Test Split Complete ---")
+print(f"\n<--- Train-Test Split Complete --->")
 print(f"Training features shape: {X_train.shape}")
 print(f"Testing features shape: {X_test.shape}")
 
