@@ -1,5 +1,4 @@
 import numpy as np
-import seaborn as sns
 import pandas as pd
 import lightgbm as lgb
 from sklearn.ensemble import IsolationForest
