@@ -215,7 +215,44 @@ if __name__ == "__main__":
     summary.columns = ['Total Leaked Past Tier 1', 'Caught By Tier 2']
     print(summary)
 
+    
+# print(f"\n--- SUPPORT VECTOR MACHINE TRAINING ---")
+# svm_model = train_svm(X_train_scaled, y_train)
 
+# # 5. Evaluate Performance (with ROC-AUC)
+# print("\n--- Evaluating SVM Performance ---")
+# y_pred_svm = svm_model.predict(X_test_scaled)
+
+# # Get confidence scores via decision_function for Class 1 (Attacks)
+# y_scores_svm = svm_model.decision_function(X_test_scaled)
+
+# # Calculate the ultimate metric
+# roc_auc_svm = roc_auc_score(y_test, y_scores_svm)
+
+# print("Classification Report:")
+# print(classification_report(y_test, y_pred_svm))
+
+# print("\n--- Raw Confusion Matrix (Actual Counts) ---")
+# print(confusion_matrix(y_test, y_pred_svm))
+
+# print(f"\n➔ SVM ROC-AUC Score: {roc_auc_svm:.5f}")
+
+# # 6. Breakdown of Missed Attacks for SVM
+# missed_mask_svm = (y_test == 1) & (y_pred_svm == 0)
+# missed_attacks_svm = y_test_raw[missed_mask_svm]
+
+# print(f"\n--- Breakdown of the {len(missed_attacks_svm)} Missed Attacks ---")
+# if len(missed_attacks_svm) > 0:
+#     print(pd.Series(missed_attacks_svm).value_counts())
+# else:
+#     print("Zero missed attacks!")
+
+# # --- Plot the SVM ROC Curve ---
+# print("\nGenerating ROC Curve plot...")
+# plt.figure(figsize=(8, 6))
+# RocCurveDisplay.from_predictions(
+#     y_test, 
+#     y_scores_svm, 
 #     name="Support Vector Machine", 
 #     color="purple",
 #     linewidth=2
