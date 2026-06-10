@@ -214,9 +214,8 @@ if __name__ == "__main__":
     summary = interception_report.groupby('Attack Type')['Intercepted'].agg(['count', 'sum'])
     summary.columns = ['Total Leaked Past Tier 1', 'Caught By Tier 2']
     print(summary)
-# print(f"\n--- SUPPORT VECTOR MACHINE TRAINING ---")
-# svm_model = train_svm(X_train_scaled, y_train)
 
+ 
 # # 5. Evaluate Performance (with ROC-AUC)
 # print("\n--- Evaluating SVM Performance ---")
 # y_pred_svm = svm_model.predict(X_test_scaled)
