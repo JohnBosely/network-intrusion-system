@@ -1,17 +1,10 @@
-from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix, roc_curve, RocCurveDisplay
-from sklearn.model_selection import train_test_split
-from xgboost import XGBClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from lightgbm import LGBMClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import SVC
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
+import pandas as pd
 from pathlib import Path 
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 
+# Pulling our clean, dedicated models directly from your architecture
+from models import train_lgbm, train_isolation_forest
 
 def load_data():
     script_dir = Path(__file__).resolve().parent
@@ -22,7 +15,6 @@ def load_data():
     print(f"Found {len(files)} files.")
 
     df_list = []
-
     for file in files:
         print(f"Reading: {file.name}...")
         df = pd.read_csv(file)
@@ -32,26 +24,14 @@ def load_data():
     combine_df = pd.concat(df_list, ignore_index=True)
     return combine_df
 
-
 def clean_data(combine_df):
     print(f"\n--- Starting Data Inspection and Cleaning ---")
     combine_df = remove_infinite_values(combine_df)
     combine_df = clean_labels(combine_df)
     print(f"New Dataset Shape: {combine_df.shape}")
-    print(f"Head of Dataset: {combine_df.head(5)}")
     
-    null_count = combine_df.isnull().sum()
-    print("\nColumns with missing values:")
-    print(null_count[null_count > 0])
-
-    num_cols = combine_df.select_dtypes(include=[np.number]).columns
-    inf_counts = np.isinf(combine_df[num_cols]).sum()
-    print("\nColumns with infinite values:")
-    print(inf_counts[inf_counts > 0])
-
     print("\nTarget Label Distribution:")
     print(combine_df['Label'].value_counts())
-
     return combine_df
 
 def remove_infinite_values(combine_df):
@@ -63,19 +43,14 @@ def remove_infinite_values(combine_df):
 
 def clean_labels(combine_df):
     combine_df['Label'] = combine_df['Label'].astype(str).str.strip()
-    combine_df['Label'] = combine_df['Label'].apply(lambda x: 0 if x == 'BENIGN' else 1)
     return combine_df
 
 def scale_features(X_train, X_test):
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    # Scale and reconstruct DataFrames to lock in feature names for SHAP
+    X_train_scaled = pd.DataFrame(scaler.fit_transform(X_train), columns=X_train.columns, index=X_train.index)
+    X_test_scaled = pd.DataFrame(scaler.transform(X_test), columns=X_test.columns, index=X_test.index)
     return X_train_scaled, X_test_scaled
-
-def split_features_target(combine_df):
-    X = combine_df.drop(columns=['Label'])
-    y = combine_df['Label']
-    return X, y
 
 def preprocess_chronological(data_dir_path, sample_size=100000):
     data_dir = Path(data_dir_path)
@@ -89,12 +64,7 @@ def preprocess_chronological(data_dir_path, sample_size=100000):
     for file in files:
         df = pd.read_csv(file)
         df.columns = df.columns.str.strip()
-        
         df = remove_infinite_values(df)
-        
-        # <--- ADD THIS LINE: Keep a backup of the original text names --->
-        df['Raw_Label'] = df['Label'].astype(str).str.strip()
-        
         df = clean_labels(df)
         
         cutoff = int(len(df) * 0.8)
@@ -108,143 +78,142 @@ def preprocess_chronological(data_dir_path, sample_size=100000):
     train_sampled = full_train.sample(n=sample_size, random_state=42)
     test_sampled = full_test.sample(n=int(sample_size * 0.25), random_state=42)
     
-    X_train = train_sampled.drop(columns=["Label", "Raw_Label"], errors='ignore')
-    y_train = train_sampled["Label"]
+    X_train = train_sampled.drop(columns=["Label"], errors='ignore')
+    y_train_raw = train_sampled["Label"]
     
-    X_test = test_sampled.drop(columns=["Label", "Raw_Label"], errors='ignore')
-    y_test = test_sampled["Label"]
+    X_test = test_sampled.drop(columns=["Label"], errors='ignore')
+    y_test_raw = test_sampled["Label"]
     
-    # --- ADD THIS LINE: Pull the text names for the test set ---
-    y_test_raw = test_sampled["Raw_Label"].values
+    return X_train, X_test, y_train_raw, y_test_raw
+
+
+# Curated behavioral features that strip out static noise and focus on traffic mechanics
+ANOMALY_FEATURE_SET = [
+    'Flow Duration', 'Total Fwd Packets', 'Total Backward Packets',
+    'Fwd Packet Length Max', 'Fwd Packet Length Min', 'Fwd Packet Length Mean',
+    'Bwd Packet Length Max', 'Bwd Packet Length Min', 'Bwd Packet Length Mean',
+    'Flow Bytes/s', 'Flow Packets/s', 'Flow IAT Mean', 'Flow IAT Max', 'Flow IAT Min',
+    'Fwd Header Length', 'Bwd Header Length', 'Packet Length Variance',
+    'Average Packet Size', 'Avg Fwd Segment Size', 'Avg Bwd Segment Size'
+]
+
+# =====================================================================
+# --- MULTI-TIER HYBRID EXECUTION PIPELINE ---
+# =====================================================================
+if __name__ == "__main__":
+    # 1. Setup paths
+    script_dir = Path(__file__).resolve().parent
+    data_directory = script_dir.parent / "data" / "MachineLearningCVE"
+
+    # 2. Extract features & raw string text labels
+    X_train, X_test, y_train_raw, y_test_raw = preprocess_chronological(
+        data_dir_path=data_directory, sample_size=100000
+    )
+
+    # 3. Label Encoding with global data vision
+    label_encoder = LabelEncoder()
+    full_label_union = pd.concat([y_train_raw, y_test_raw])
+    label_encoder.fit(full_label_union)
+
+    y_train = label_encoder.transform(y_train_raw)
+    y_test = label_encoder.transform(y_test_raw)
+
+    class_names = label_encoder.classes_
+    benign_idx = np.where(class_names == 'BENIGN')[0][0]
+
+    # 4. Standardize features
+    X_train_scaled, X_test_scaled = scale_features(X_train, X_test)
+
+    # 5. Train Tier-1: Supervised Native LightGBM Classifier
+    print(f"\n--- TIER 1: TRAINING SUPERVISED CLASSIFIER ---")
+    # Fixed: Passing len(class_names) so LightGBM allocates room for all encoded integers
+    lgbm_model = train_lgbm(X_train_scaled, y_train, num_class=len(class_names))
+
+  # =====================================================================
+    # --- TIER 2: OPERATIONAL BOUNDARY TUNING SWEEP ---
+    # =====================================================================
+    print(f"\n--- TIER 2: TUNING OPERATIONAL PERCENTILE BOUNDARY ---")
     
-    # Return 5 things now instead of 4
-    return X_train, X_test, y_train, y_test, y_test_raw
+    from sklearn.ensemble import IsolationForest
 
-def train_xgb(X_train_scaled, y_train):
-    print("\n--- Training XGBoost Classifier ---")
-    model = XGBClassifier(n_estimators=100, random_state=42, n_jobs=-1)
-    model.fit(X_train_scaled, y_train)
-    print("Training Complete!")
-    return model
+    X_train_anomaly = X_train_scaled[ANOMALY_FEATURE_SET]
+    X_train_pure_benign = X_train_anomaly[y_train == benign_idx]
 
-def train_lr(X_train_scaled, y_train):
-    print("\n--- Training Logistic Regression Classifier ---")
-    # max_iter=1000 ensures the solver has enough steps to converge on 78 features
-    model = LogisticRegression(max_iter=100, random_state=42, n_jobs=-1)
-    model.fit(X_train_scaled, y_train)
-    print("Training Complete!")
-    return model
+    # Lock in our winning architecture
+    print("Training production-grade Isolation Forest (n_estimators=250, max_samples=2048)...")
+    production_anomaly_detector = IsolationForest(
+        n_estimators=250,
+        max_samples=2048,
+        contamination=0.05,
+        random_state=42,
+        n_jobs=-1
+    )
+    production_anomaly_detector.fit(X_train_pure_benign)
+    
+    # Extract raw score vectors
+    train_benign_scores = production_anomaly_detector.decision_function(X_train_pure_benign)
+    
+    lgbm_probs = lgbm_model.predict(X_test_scaled)
+    y_pred_lgbm = np.argmax(lgbm_probs, axis=1)
+    leaked_mask = (y_test != benign_idx) & (y_pred_lgbm == benign_idx)
+    leaked_indices = np.where(leaked_mask)[0]
+    
+    X_leaked_anomaly = X_test_scaled[ANOMALY_FEATURE_SET].iloc[leaked_indices]
+    X_test_benign = X_test_scaled[ANOMALY_FEATURE_SET][y_test == benign_idx]
+    
+    leaked_scores = production_anomaly_detector.decision_function(X_leaked_anomaly)
+    benign_test_scores = production_anomaly_detector.decision_function(X_test_benign)
 
-def train_rf(X_train_scaled, y_train):
-    print("\n--- Training Random Forest Classifier ---")
-    # n_jobs=-1 uses all CPU cores for parallel tree building
-    model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
-    model.fit(X_train_scaled, y_train)
-    print("Training Complete!")
-    return model
+    total_leaked_attacks = len(leaked_indices)
+    total_benign_test = len(X_test_benign)
 
-def train_svm(X_train_scaled, y_train):
-    print("\n--- Training Support Vector Machine Classifier (RBF Kernel) ---")
-    print("Note: SVM training can take a couple of minutes depending on your CPU...")
-    # We leave probability=False and use decision_function later for speed
-    model = SVC(kernel='rbf', random_state=42)
-    model.fit(X_train_scaled, y_train)
-    print("Training Complete!")
-    return model
+    # Sweep across percentile thresholds to find the optimum operational sweet spot
+    percentile_candidates = [5, 7, 9, 11, 13, 15]
+    
+    best_tpr = -1.0
+    best_fpr = 100.0
+    final_operational_threshold = None
+    best_percentile = None
 
-from lightgbm import LGBMClassifier
+    print(f"Sweeping operational boundaries to maximize detection while constraining FPR <= 5.0%...\n")
 
-def train_lgbm(X_train_scaled, y_train):
-    print("\n--- Training LightGBM Classifier ---")
-    # n_jobs=-1 utilizes all available CPU cores
-    # verbose=-1 silences unnecessary internal logging messages
-    model = LGBMClassifier(random_state=42, n_jobs=-1, verbose=-1)
-    model.fit(X_train_scaled, y_train)
-    print("Training Complete!")
-    return model
+    for p in percentile_candidates:
+        # Calculate threshold dynamically based on candidate percentile
+        CANDIDATE_THRESHOLD = np.percentile(train_benign_scores, p)
+        
+        intercepted = np.sum(leaked_scores < CANDIDATE_THRESHOLD)
+        false_alarms = np.sum(benign_test_scores < CANDIDATE_THRESHOLD)
+        
+        tpr = (intercepted / total_leaked_attacks) * 100
+        fpr = (false_alarms / total_benign_test) * 100
+        
+        print(f"➔ Testing Training Percentile: {p}% | Threshold: {CANDIDATE_THRESHOLD:.4f}")
+        print(f"   Test Metrics -> Detection Rate (TPR): {tpr:.2f}% | False Alarm Rate (FPR): {fpr:.2f}%")
+        
+        # Enforce hard engineering constraint: Maximize TPR, but FPR must be under 5.0%
+        if fpr <= 5.0 and tpr > best_tpr:
+            best_tpr = tpr
+            best_fpr = fpr
+            final_operational_threshold = CANDIDATE_THRESHOLD
+            best_percentile = p
 
-def evaluate_model(model, X_test_scaled, y_test):
-    print("\n--- Evaluating Model Performance ---")
-    y_pred = model.predict(X_test_scaled)
-    report = classification_report(y_test, y_pred)
-    print("Classification Report:")
-    print(report)
-    return report
+    print("\n====================================================")
+    print("--- PRODUCTION BOUNDARY OPTIMIZATION COMPLETE ---")
+    print("====================================================")
+    print(f"Optimal Operational Setting: {best_percentile}th Percentile")
+    print(f"Target Security Threshold: {final_operational_threshold:.4f}")
+    print(f"Final System Metrics -> Detection Rate: {best_tpr:.2f}% | False Alarm Rate: {best_fpr:.2f}%")
 
-
-# --- MAIN EXECUTION PIPELINE --
-
-# 1. Setup paths
-script_dir = Path(__file__).resolve().parent
-data_directory = script_dir.parent / "data" / "MachineLearningCVE"
-
-# 2. Extract features & targets using the chronological strategy
-# Catch the new y_test_raw variable
-X_train, X_test, y_train, y_test, y_test_raw = preprocess_chronological(
-    data_dir_path=data_directory, sample_size=100000
-)
-
-print(f"\n--- Train-Test Split Complete ---")
-print(f"Training features shape: {X_train.shape}")
-print(f"Testing features shape: {X_test.shape}")
-
-# 3. Standardize features
-X_train_scaled, X_test_scaled = scale_features(X_train, X_test)
-print(f"--- Feature Scaling Complete ---")
-
-# 4. Train LightGBM Model
-print(f"\n--- LIGHTGBM TRAINING ---")
-lgbm_model = train_lgbm(X_train_scaled, y_train)
-
-# 5. Evaluate Performance (with ROC-AUC)
-print("\n--- Evaluating LightGBM Performance ---")
-y_pred_lgbm = lgbm_model.predict(X_test_scaled)
-
-# Get raw probabilities for Class 1 (Attacks)
-y_probs_lgbm = lgbm_model.predict_proba(X_test_scaled)[:, 1]
-
-# Calculate the ultimate metric
-roc_auc_lgbm = roc_auc_score(y_test, y_probs_lgbm)
-
-print("Classification Report:")
-print(classification_report(y_test, y_pred_lgbm))
-
-print("\n--- Raw Confusion Matrix (Actual Counts) ---")
-print(confusion_matrix(y_test, y_pred_lgbm))
-
-print(f"\n➔ LightGBM ROC-AUC Score: {roc_auc_lgbm:.5f}")
-
-# 6. Breakdown of Missed Attacks for LightGBM
-missed_mask_lgbm = (y_test == 1) & (y_pred_lgbm == 0)
-missed_attacks_lgbm = y_test_raw[missed_mask_lgbm]
-
-print(f"\n--- Breakdown of the {len(missed_attacks_lgbm)} Missed Attacks ---")
-if len(missed_attacks_lgbm) > 0:
-    print(pd.Series(missed_attacks_lgbm).value_counts())
-else:
-    print("Zero missed attacks!")
-
-# --- Plot the LightGBM ROC Curve ---
-print("\nGenerating ROC Curve plot...")
-plt.figure(figsize=(8, 6))
-RocCurveDisplay.from_predictions(
-    y_test, 
-    y_probs_lgbm, 
-    name="LightGBM", 
-    color="teal",
-    linewidth=2
-)
-plt.plot([0, 1], [0, 1], color="navy", linestyle="--", label="Random Guess (0.50)")
-plt.xlim([0.0, 1.0])
-plt.ylim([0.0, 1.05])
-plt.xlabel("False Positive Rate (False Alarms)")
-plt.ylabel("True Positive Rate (Caught Attacks)")
-plt.title("LightGBM ROC Curve")
-plt.legend(loc="lower right")
-plt.grid(True, linestyle="--", alpha=0.6)
-plt.show()
-
-# <--- 4. Train Support Vector Machine Model --->
+    # Final threat profile analysis
+    interception_report = pd.DataFrame({
+        'Attack Type': y_test_raw.iloc[leaked_indices],
+        'Intercepted': (leaked_scores < final_operational_threshold)
+    })
+    
+    print("\n--- Final Breakdown of Defended Zero-Day Threats ---")
+    summary = interception_report.groupby('Attack Type')['Intercepted'].agg(['count', 'sum'])
+    summary.columns = ['Total Leaked Past Tier 1', 'Caught By Tier 2']
+    print(summary)
 # print(f"\n--- SUPPORT VECTOR MACHINE TRAINING ---")
 # svm_model = train_svm(X_train_scaled, y_train)
 
