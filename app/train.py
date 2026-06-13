@@ -159,15 +159,16 @@ def execute_mass_training():
         policy="MlpPolicy",
         env=env,
         learning_rate=3e-4,
-        n_steps=4096,           # Increased step horizon for massive data volumes
-        batch_size=256,         # Larger batch processing size
+        n_steps=4096,
+        batch_size=256,
         n_epochs=10,
         verbose=1,
+        # Remove policy_kwargs entirely — back to default [64, 64]
         tensorboard_log=str(ROOT_DIR / "tensorboard_logs")
     )
 
-    # Scale total execution steps to run deep across the parsed data spectrum
-    TOTAL_TRAINING_STEPS = 1000000
+    TOTAL_TRAINING_STEPS = 2000000  # keep this
+
     print(f"\n[TRAIN] Launching high-speed loop for {TOTAL_TRAINING_STEPS} steps...")
     agent.learn(total_timesteps=TOTAL_TRAINING_STEPS)
 
