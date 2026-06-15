@@ -43,13 +43,13 @@ class FastNetworkDefenseEnv(gym.Env):
         is_attack = (true_label_idx != self.benign_idx)
 
         if action == 0:  # ALLOW
-            reward = 5.0 if not is_attack else -20.0
+            reward = 5.0 if not is_attack else -15.0
         elif action == 1:  # THROTTLE
-            reward = -1.0 if not is_attack else 8.0
+            reward = -0.5 if not is_attack else 5.0
         elif action == 2:  # DROP
-            reward = -3.0 if not is_attack else 5.0
+            reward = -2.0 if not is_attack else 8.0
         elif action == 3:  # HONEYPOT
-            reward = -1.5 if not is_attack else 6.0
+            reward = -1.0 if not is_attack else 6.0
 
         self.current_idx += 1
         terminated = (self.current_idx >= self.total_packets - 1)

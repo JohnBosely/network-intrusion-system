@@ -56,12 +56,23 @@ def build_observation_matrix(lgbm, iforest, X_test_scaled, anomaly_features):
 
     t1_probs   = lgbm.predict(X_test_scaled)
     t2_scores  = iforest.decision_function(X_test_scaled[anomaly_features])
-    mock_loads = (np.arange(len(X_test_scaled)) % 100) / 100.0
+    # Rolling threat rate: what fraction of the last 100 packets were attacks
+    # Uses LightGBM predictions to estimate threat rate without needing true labels
+    y_pred_train = np.argmax(t1_probs, axis=1)
+    benign_idx_local = int(np.where(label_encoder.classes_ == "BENIGN")[0][0])
+    is_predicted_attack = (y_pred_train != benign_idx_local).astype(float)
 
-    obs_matrix = np.hstack([
+    # Rolling window of 100 packets
+    window = 100
+    rolling_threat = np.zeros(len(is_predicted_attack))
+    for i in range(len(is_predicted_attack)):
+        start = max(0, i - window)
+        rolling_threat[i] = is_predicted_attack[start:i+1].mean()
+
+    precomputed_obs = np.hstack([
         t1_probs,
         t2_scores.reshape(-1, 1),
-        mock_loads.reshape(-1, 1)
+        rolling_threat.reshape(-1, 1)    # was mock_loads_all
     ]).astype(np.float32)
 
     print(f"  Observation matrix shape: {obs_matrix.shape}")
@@ -328,7 +339,7 @@ if __name__ == "__main__":
     print("[EVAL] Loading test partition...")
     X_train, X_test, y_train_raw, y_test_raw = preprocess_chronological(
         data_dir_path=DATA_DIR,
-        sample_size=50000
+        sample_size=100000
     )
 
     # 3. Encode labels using the saved encoder

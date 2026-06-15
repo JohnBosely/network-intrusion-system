@@ -133,15 +133,25 @@ def execute_mass_training():
     ]
     t2_scores_all = iforest.decision_function(X_train_scaled[anomaly_features]) # Shape: (NumPackets,)
     
-    # Generate mock network congestion timelines for the matrix
-    mock_loads_all = (np.arange(len(X_train_scaled)) % 100) / 100.0
+    # Rolling threat rate: what fraction of the last 100 packets were attacks
+    # Uses LightGBM predictions to estimate threat rate without needing true labels
+    y_pred_train = np.argmax(t1_probs_all, axis=1)
+    benign_idx_local = int(np.where(label_encoder.classes_ == "BENIGN")[0][0])
+    is_predicted_attack = (y_pred_train != benign_idx_local).astype(float)
+
+# Rolling window of 100 packets
+    window = 100
+    rolling_threat = np.zeros(len(is_predicted_attack))
+    for i in range(len(is_predicted_attack)):
+        start = max(0, i - window)
+        rolling_threat[i] = is_predicted_attack[start:i+1].mean()
     
     # Stacking everything horizontally into a single array block
     print("[PRE-COMPUTE] Assembling vectorized observation matrix...")
     precomputed_obs = np.hstack([
-        t1_probs_all, 
-        t2_scores_all.reshape(-1, 1), 
-        mock_loads_all.reshape(-1, 1)
+        t1_probs_all,
+        t2_scores_all.reshape(-1, 1),
+        rolling_threat.reshape(-1, 1)    # was mock_loads_all
     ]).astype(np.float32)
 
     # 5. Spin Up the High-Speed Board
@@ -167,8 +177,7 @@ def execute_mass_training():
         tensorboard_log=str(ROOT_DIR / "tensorboard_logs")
     )
 
-    TOTAL_TRAINING_STEPS = 2000000  # keep this
-
+    TOTAL_TRAINING_STEPS = 1000000
     print(f"\n[TRAIN] Launching high-speed loop for {TOTAL_TRAINING_STEPS} steps...")
     agent.learn(total_timesteps=TOTAL_TRAINING_STEPS)
 
