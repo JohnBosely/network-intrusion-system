@@ -46,7 +46,7 @@ def load_artifacts(artifacts_dir: Path):
     return label_encoder, lgbm, iforest, agent, benign_idx, config
 
 
-def build_observation_matrix(lgbm, iforest, X_test_scaled, anomaly_features):
+def build_observation_matrix(lgbm, iforest, label_encoder, X_test_scaled, anomaly_features):
     """
     Pre-computes the full observation matrix for the test set.
     Same approach used in train.py — runs inference once up front
@@ -54,25 +54,24 @@ def build_observation_matrix(lgbm, iforest, X_test_scaled, anomaly_features):
     """
     print("[EVAL] Running batch inference on test set...")
 
-    t1_probs   = lgbm.predict(X_test_scaled)
-    t2_scores  = iforest.decision_function(X_test_scaled[anomaly_features])
-    # Rolling threat rate: what fraction of the last 100 packets were attacks
-    # Uses LightGBM predictions to estimate threat rate without needing true labels
-    y_pred_train = np.argmax(t1_probs, axis=1)
-    benign_idx_local = int(np.where(label_encoder.classes_ == "BENIGN")[0][0])
-    is_predicted_attack = (y_pred_train != benign_idx_local).astype(float)
+    t1_probs  = lgbm.predict(X_test_scaled)
+    t2_scores = iforest.decision_function(X_test_scaled[anomaly_features])
 
-    # Rolling window of 100 packets
+    # Rolling threat rate — same logic as train.py
+    y_pred_test = np.argmax(t1_probs, axis=1)
+    benign_idx_local = int(np.where(label_encoder.classes_ == "BENIGN")[0][0])
+    is_predicted_attack = (y_pred_test != benign_idx_local).astype(float)
+
     window = 100
     rolling_threat = np.zeros(len(is_predicted_attack))
     for i in range(len(is_predicted_attack)):
         start = max(0, i - window)
         rolling_threat[i] = is_predicted_attack[start:i+1].mean()
 
-    precomputed_obs = np.hstack([
+    obs_matrix = np.hstack([
         t1_probs,
         t2_scores.reshape(-1, 1),
-        rolling_threat.reshape(-1, 1)    # was mock_loads_all
+        rolling_threat.reshape(-1, 1)
     ]).astype(np.float32)
 
     print(f"  Observation matrix shape: {obs_matrix.shape}")
@@ -352,8 +351,7 @@ if __name__ == "__main__":
     _, X_test_scaled = scale_features(X_train, X_test)
 
     # 5. Build the observation matrix for the test set
-    obs_matrix = build_observation_matrix(lgbm, iforest, X_test_scaled, ANOMALY_FEATURES)
-
+    obs_matrix = build_observation_matrix(lgbm, iforest, label_encoder, X_test_scaled, ANOMALY_FEATURES)
     # 6. Run the agent across every test packet
     results_df = run_agent_evaluation(agent, obs_matrix, y_test, benign_idx, class_names)
 
