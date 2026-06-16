@@ -68,11 +68,22 @@ def build_observation_matrix(lgbm, iforest, label_encoder, X_test_scaled, anomal
         start = max(0, i - window)
         rolling_threat[i] = is_predicted_attack[start:i+1].mean()
 
-    obs_matrix = np.hstack([
-        t1_probs,
-        t2_scores.reshape(-1, 1),
-        rolling_threat.reshape(-1, 1)
-    ]).astype(np.float32)
+    base_obs = np.hstack([
+    t1_probs,
+    t2_scores.reshape(-1, 1),
+    rolling_threat.reshape(-1, 1)
+]).astype(np.float32)
+
+    WINDOW_SIZE = 5
+    n_samples, n_features = base_obs.shape
+    windowed_obs = np.zeros((n_samples, n_features * WINDOW_SIZE), dtype=np.float32)
+
+    for i in range(n_samples):
+        for w in range(WINDOW_SIZE):
+            src_idx = max(0, i - (WINDOW_SIZE - 1 - w))
+            windowed_obs[i, w * n_features:(w + 1) * n_features] = base_obs[src_idx]
+
+    obs_matrix = windowed_obs
 
     print(f"  Observation matrix shape: {obs_matrix.shape}")
     print("[EVAL] Batch inference complete.\n")

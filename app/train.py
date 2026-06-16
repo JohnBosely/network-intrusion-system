@@ -148,11 +148,25 @@ def execute_mass_training():
     
     # Stacking everything horizontally into a single array block
     print("[PRE-COMPUTE] Assembling vectorized observation matrix...")
-    precomputed_obs = np.hstack([
+    # Build base observation matrix first
+    base_obs = np.hstack([
         t1_probs_all,
         t2_scores_all.reshape(-1, 1),
-        rolling_threat.reshape(-1, 1)    # was mock_loads_all
+        rolling_threat.reshape(-1, 1)
     ]).astype(np.float32)
+
+    # Sliding window of 5 packets — agent sees current + 4 previous packets
+    WINDOW_SIZE = 5
+    n_samples, n_features = base_obs.shape
+    windowed_obs = np.zeros((n_samples, n_features * WINDOW_SIZE), dtype=np.float32)
+
+    for i in range(n_samples):
+        for w in range(WINDOW_SIZE):
+            src_idx = max(0, i - (WINDOW_SIZE - 1 - w))
+            windowed_obs[i, w * n_features:(w + 1) * n_features] = base_obs[src_idx]
+
+    precomputed_obs = windowed_obs
+    print(f"[PRE-COMPUTE] Sliding window applied. Observation shape: {precomputed_obs.shape}")
 
     # 5. Spin Up the High-Speed Board
     benign_idx = int(np.where(label_encoder.classes_ == "BENIGN")[0][0])
