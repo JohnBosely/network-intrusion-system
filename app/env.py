@@ -33,8 +33,7 @@ class FastNetworkDefenseEnv(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        # Shuffle packet order each episode so agent sees attacks early and often
-        self.episode_order = np.random.permutation(self.total_packets)
+        self.episode_order = np.arange(self.total_packets)  # sequential, not shuffled
         self.current_idx = 0
         return self.obs_matrix[self.episode_order[0]], {}
 
