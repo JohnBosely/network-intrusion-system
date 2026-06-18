@@ -30,34 +30,27 @@ class ThreatExplainer:
     def explain_packet(self, packet_features: pd.DataFrame, top_n: int = 5) -> dict:
         """
         Computes SHAP explanation for a single packet.
-
-        Args:
-            packet_features: DataFrame with exactly 1 row and 78 feature columns
-            top_n: Number of top contributing features to return
-
-        Returns:
-            Dictionary containing:
-            - predicted_class: string name of predicted threat type
-            - confidence: float probability of the predicted class
-            - all_class_probs: dict of {class_name: probability} for all 15 classes
-            - top_features: list of dicts with feature name, value, and SHAP contribution
-            - verdict: human-readable explanation string
         """
         # Get LightGBM probability predictions
-        # Output shape: (1, num_classes)
         probs = self.lgbm.predict(packet_features)
         predicted_idx = int(np.argmax(probs[0]))
         predicted_class = self.class_names[predicted_idx]
         confidence = float(probs[0][predicted_idx])
 
         # Compute SHAP values
-        # shap_values shape: (num_classes, 1, num_features)
-        # We want the values for the predicted class specifically
         shap_values = self.explainer.shap_values(packet_features)
 
-        # Extract SHAP values for the predicted class
-        # Shape after indexing: (1, num_features) → (num_features,)
-        class_shap = shap_values[predicted_idx][0]
+        # === FIX: Handle list vs 3D Array formats across SHAP versions ===
+        if isinstance(shap_values, list):
+            # Old SHAP format: list of length num_classes with arrays of shape (num_samples, num_features)
+            class_shap = shap_values[predicted_idx][0]
+        elif isinstance(shap_values, np.ndarray) and shap_values.ndim == 3:
+            # Modern SHAP format: (num_samples, num_features, num_classes)
+            class_shap = shap_values[0, :, predicted_idx]
+        else:
+            # Fallback uniform array format
+            class_shap = shap_values[0]
+        # =================================================================
 
         # Build feature contribution table
         feature_names = list(packet_features.columns)
@@ -94,18 +87,10 @@ class ThreatExplainer:
             "top_features": top_features,
             "verdict": verdict
         }
-
+    
     def explain_batch(self, packets_df: pd.DataFrame, top_n: int = 5) -> list:
         """
-        Explains multiple packets at once — more efficient than calling
-        explain_packet in a loop because SHAP batches the computation.
-
-        Args:
-            packets_df: DataFrame with multiple rows (one per packet)
-            top_n: Number of top features per packet
-
-        Returns:
-            List of explanation dicts, one per packet
+        Explains multiple packets at once.
         """
         probs = self.lgbm.predict(packets_df)
         shap_values = self.explainer.shap_values(packets_df)
@@ -118,7 +103,16 @@ class ThreatExplainer:
             predicted_class = self.class_names[predicted_idx]
             confidence = float(probs[row_idx][predicted_idx])
 
-            class_shap = shap_values[predicted_idx][row_idx]
+            # === FIX: Handle batch list vs 3D Array formats ===
+            if isinstance(shap_values, list):
+                class_shap = shap_values[predicted_idx][row_idx]
+            elif isinstance(shap_values, np.ndarray) and shap_values.ndim == 3:
+                # Pull [current_packet, all_features, target_class]
+                class_shap = shap_values[row_idx, :, predicted_idx]
+            else:
+                class_shap = shap_values[row_idx]
+            # ===================================================
+
             feature_values = packets_df.iloc[row_idx].values
 
             contributions = []
