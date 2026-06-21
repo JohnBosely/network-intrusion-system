@@ -81,7 +81,7 @@ def scale_features(X_train, X_test):
         columns=X_test.columns,
         index=X_test.index
     )
-    return X_train_scaled, X_test_scaled
+    return X_train_scaled, X_test_scaled, scaler  # ← add scaler
 
 
 # =====================================================================
@@ -372,7 +372,7 @@ def run_operational_boundary_sweep(
 
 def serialize_system_artifacts(
     script_root, lgbm_model, anomaly_detector,
-    label_encoder, percentile, threshold, benign_idx
+    label_encoder, scaler, percentile, threshold, benign_idx  # ← add scaler
 ):
     print(f"\n--- SERIALIZING ARTIFACTS ---")
     artifacts_dir = script_root.parent / "artifacts"
@@ -381,6 +381,7 @@ def serialize_system_artifacts(
     joblib.dump(lgbm_model,        artifacts_dir / "tier1_lightgbm.pkl")
     joblib.dump(anomaly_detector,  artifacts_dir / "tier2_isolation_forest.pkl")
     joblib.dump(label_encoder,     artifacts_dir / "label_encoder.pkl")
+    joblib.dump(scaler,            artifacts_dir / "feature_scaler.pkl")  # ← new line
 
     config_path = artifacts_dir / "system_config.txt"
     with open(config_path, "w") as f:
@@ -419,8 +420,7 @@ if __name__ == "__main__":
     print(f"\nEncoded classes: {list(enumerate(class_names))}")
     print(f"BENIGN index: {benign_idx}")
 
-    X_train_scaled, X_test_scaled = scale_features(X_train, X_test)
-
+    X_train_scaled, X_test_scaled, scaler = scale_features(X_train, X_test)  # ← unpack scaler
     lgbm_model = execute_tier1_training(X_train_scaled, y_train, class_names)
 
     anomaly_detector, optimal_percentile, final_threshold = run_operational_boundary_sweep(
@@ -434,6 +434,7 @@ if __name__ == "__main__":
         lgbm_model=lgbm_model,
         anomaly_detector=anomaly_detector,
         label_encoder=label_encoder,
+        scaler=scaler, 
         percentile=optimal_percentile,
         threshold=final_threshold,
         benign_idx=benign_idx

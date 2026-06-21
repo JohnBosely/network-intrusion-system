@@ -157,10 +157,34 @@ from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional
 from stable_baselines3 import PPO
-from sklearn.preprocessing import StandardScaler
+from app.shap_explainer import ThreatExplainer
 
-from shap_explainer import ThreatExplainer
-
+# Exact 78 feature names in training order — used to reindex every incoming packet
+FEATURE_COLUMNS = [
+    'Destination_Port', 'Flow_Duration', 'Total_Fwd_Packets', 'Total_Backward_Packets',
+    'Total_Length_of_Fwd_Packets', 'Total_Length_of_Bwd_Packets',
+    'Fwd_Packet_Length_Max', 'Fwd_Packet_Length_Min', 'Fwd_Packet_Length_Mean', 'Fwd_Packet_Length_Std',
+    'Bwd_Packet_Length_Max', 'Bwd_Packet_Length_Min', 'Bwd_Packet_Length_Mean', 'Bwd_Packet_Length_Std',
+    'Flow_Bytes/s', 'Flow_Packets/s',
+    'Flow_IAT_Mean', 'Flow_IAT_Std', 'Flow_IAT_Max', 'Flow_IAT_Min',
+    'Fwd_IAT_Total', 'Fwd_IAT_Mean', 'Fwd_IAT_Std', 'Fwd_IAT_Max', 'Fwd_IAT_Min',
+    'Bwd_IAT_Total', 'Bwd_IAT_Mean', 'Bwd_IAT_Std', 'Bwd_IAT_Max', 'Bwd_IAT_Min',
+    'Fwd_PSH_Flags', 'Bwd_PSH_Flags', 'Fwd_URG_Flags', 'Bwd_URG_Flags',
+    'Fwd_Header_Length', 'Bwd_Header_Length',
+    'Fwd_Packets/s', 'Bwd_Packets/s',
+    'Min_Packet_Length', 'Max_Packet_Length', 'Packet_Length_Mean', 'Packet_Length_Std', 'Packet_Length_Variance',
+    'FIN_Flag_Count', 'SYN_Flag_Count', 'RST_Flag_Count', 'PSH_Flag_Count',
+    'ACK_Flag_Count', 'URG_Flag_Count', 'CWE_Flag_Count', 'ECE_Flag_Count',
+    'Down/Up_Ratio', 'Average_Packet_Size', 'Avg_Fwd_Segment_Size', 'Avg_Bwd_Segment_Size',
+    'Fwd_Header_Length.1',
+    'Fwd_Avg_Bytes/Bulk', 'Fwd_Avg_Packets/Bulk', 'Fwd_Avg_Bulk_Rate',
+    'Bwd_Avg_Bytes/Bulk', 'Bwd_Avg_Packets/Bulk', 'Bwd_Avg_Bulk_Rate',
+    'Subflow_Fwd_Packets', 'Subflow_Fwd_Bytes', 'Subflow_Bwd_Packets', 'Subflow_Bwd_Bytes',
+    'Init_Win_bytes_forward', 'Init_Win_bytes_backward',
+    'act_data_pkt_fwd', 'min_seg_size_forward',
+    'Active_Mean', 'Active_Std', 'Active_Max', 'Active_Min',
+    'Idle_Mean', 'Idle_Std', 'Idle_Max', 'Idle_Min'
+]
 # =====================================================================
 # --- APP INIT
 # =====================================================================
@@ -329,6 +353,7 @@ def load_models():
         MODELS["lgbm"]          = joblib.load(ARTIFACTS_DIR / "tier1_lightgbm.pkl")
         MODELS["iforest"]       = joblib.load(ARTIFACTS_DIR / "tier2_isolation_forest.pkl")
         MODELS["ppo"]           = PPO.load(ARTIFACTS_DIR / "tier3_ppo_agent_scaled")
+        MODELS["scaler"] = joblib.load(ARTIFACTS_DIR / "feature_scaler.pkl")
         MODELS["explainer"]     = ThreatExplainer(ARTIFACTS_DIR)
 
         # Load the scaler — we fit a new one on startup using saved artifacts
@@ -362,12 +387,12 @@ def load_models():
 # =====================================================================
 
 ANOMALY_FEATURES = [
-    'Flow Duration', 'Total Fwd Packets', 'Total Backward Packets',
-    'Fwd Packet Length Max', 'Fwd Packet Length Min', 'Fwd Packet Length Mean',
-    'Bwd Packet Length Max', 'Bwd Packet Length Min', 'Bwd Packet Length Mean',
-    'Flow Bytes/s', 'Flow Packets/s', 'Flow IAT Mean', 'Flow IAT Max', 'Flow IAT Min',
-    'Fwd Header Length', 'Bwd Header Length', 'Packet Length Variance',
-    'Average Packet Size', 'Avg Fwd Segment Size', 'Avg Bwd Segment Size'
+    'Flow_Duration', 'Total_Fwd_Packets', 'Total_Backward_Packets',
+    'Fwd_Packet_Length_Max', 'Fwd_Packet_Length_Min', 'Fwd_Packet_Length_Mean',
+    'Bwd_Packet_Length_Max', 'Bwd_Packet_Length_Min', 'Bwd_Packet_Length_Mean',
+    'Flow_Bytes/s', 'Flow_Packets/s', 'Flow_IAT_Mean', 'Flow_IAT_Max', 'Flow_IAT_Min',
+    'Fwd_Header_Length', 'Bwd_Header_Length', 'Packet_Length_Variance',
+    'Average_Packet_Size', 'Avg_Fwd_Segment_Size', 'Avg_Bwd_Segment_Size'
 ]
 
 WINDOW_SIZE = 5  # Must match what train.py used
@@ -445,23 +470,32 @@ def analyze_packet(payload: PacketInput):
     """
     start = time.perf_counter()
 
-    # --- Parse input ---
-    packet_df = pd.DataFrame([payload.features])
+    # --- Parse and align input ---
+    raw = payload.features
 
-    # Fill any missing features with 0
-    # In production you'd validate exact feature set against training schema
-    for col in ANOMALY_FEATURES:
-        if col not in packet_df.columns:
-            packet_df[col] = 0.0
+    # Tier 1 needs underscore names (how LightGBM was trained)
+    packet_df = pd.DataFrame(
+        [{col: raw.get(col, 0.0) for col in FEATURE_COLUMNS}],
+        columns=FEATURE_COLUMNS
+    )
+
+    # Scale to match training distribution
+    packet_df = pd.DataFrame(
+        MODELS["scaler"].transform(packet_df),
+        columns=FEATURE_COLUMNS
+    )
+
+    # Tier 2 (Isolation Forest) was trained with space-separated names
+    tier2_df = packet_df.rename(columns=lambda c: c.replace("_", " "))
+    ANOMALY_FEATURES_SPACED = [f.replace("_", " ") for f in ANOMALY_FEATURES]
 
     try:
         # ---- TIER 1: LightGBM ----
-        t1_probs = MODELS["lgbm"].predict(packet_df)[0]  # shape: (num_classes,)
+        t1_probs = MODELS["lgbm"].predict(packet_df)[0]
         predicted_idx = int(np.argmax(t1_probs))
         predicted_class = MODELS["class_names"][predicted_idx]
         confidence = float(t1_probs[predicted_idx])
 
-        # Top 5 classes by probability
         sorted_indices = np.argsort(t1_probs)[::-1][:5]
         top_classes = {
             MODELS["class_names"][i]: round(float(t1_probs[i]), 4)
@@ -470,7 +504,7 @@ def analyze_packet(payload: PacketInput):
 
         # ---- TIER 2: Isolation Forest ----
         t2_score = float(
-            MODELS["iforest"].decision_function(packet_df[ANOMALY_FEATURES])[0]
+            MODELS["iforest"].decision_function(tier2_df[ANOMALY_FEATURES_SPACED])[0]
         )
         t2_anomalous = t2_score < MODELS["anomaly_threshold"]
 
@@ -485,7 +519,7 @@ def analyze_packet(payload: PacketInput):
         shap_verdict = None
         shap_top_features = None
 
-        if payload.include_shap and predicted_class != "BENIGN":
+        if payload.include_shap:
             explanation = MODELS["explainer"].explain_packet(packet_df, top_n=5)
             shap_verdict = explanation["verdict"]
             shap_top_features = [
@@ -518,7 +552,6 @@ def analyze_packet(payload: PacketInput):
             status_code=500,
             detail=f"Inference pipeline error: {str(e)}"
         )
-
 
 @app.post("/analyze/batch", response_model=List[AnalysisResponse])
 def analyze_batch(packets: List[PacketInput]):
