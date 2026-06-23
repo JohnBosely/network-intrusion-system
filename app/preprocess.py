@@ -440,4 +440,4 @@ if __name__ == "__main__":
         benign_idx=benign_idx
     )
 
-    print("\n[SUCCESS] Full pipeline retrained and seriali7zed.")
+    print("\n[SUCCESS] Full pipeline retrained and serialized.")
