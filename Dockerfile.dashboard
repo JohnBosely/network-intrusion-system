@@ -6,7 +6,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir streamlit plotly requests pandas numpy
 
 COPY dashboard/ ./dashboard/
-COPY data/MachineLearningCVE/ ./data/MachineLearningCVE/
 
 EXPOSE 8501
 
