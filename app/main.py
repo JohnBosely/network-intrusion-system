@@ -519,7 +519,7 @@ def analyze_packet(payload: PacketInput):
         shap_verdict = None
         shap_top_features = None
 
-        if payload.include_shap:
+        if payload.include_shap and predicted_class != "BENIGN":
             explanation = MODELS["explainer"].explain_packet(packet_df, top_n=5)
             shap_verdict = explanation["verdict"]
             shap_top_features = [
