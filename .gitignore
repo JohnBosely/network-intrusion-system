@@ -18,3 +18,5 @@ venv/
 
 # VS Code
 .vscode/
+
+Add-Content .gitignore "`n.env"

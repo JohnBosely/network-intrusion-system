@@ -1,153 +1,5 @@
-# import time
-# import joblib
-# import numpy as np
-# import pandas as pd
-# from pathlib import Path
-# from fastapi import FastAPI, HTTPException, status
-# from stable_baselines3 import PPO
-
-# from app.schemas import NetworkPacketInput, DefenseDecisionResponse, PacketExplanationResponse
-# from app.shap_explainer import ThreatExplainer
-
-# app = FastAPI(
-#     title="Multi-Tier Automated Network Defense Microservice",
-#     description="Production-grade asynchronous framework leveraging LightGBM, Isolation Forest, and PPO Reinforcement Learning policies.",
-#     version="1.1.1"
-# )
-
-# MODEL_REGISTRY = {}
-
-# @app.on_event("startup")
-# def load_production_models():
-#     """Loads all analytical pipelines, RL agents, and XAI layers into memory on startup."""
-#     print("\n[STARTUP] Securing system memory and loading model pipelines...")
-#     try:
-#         BASE_DIR = Path(__file__).resolve().parent.parent
-#         ARTIFACTS_DIR = BASE_DIR / "artifacts"
-
-#         MODEL_REGISTRY["label_encoder"] = joblib.load(ARTIFACTS_DIR / "label_encoder.pkl")
-#         MODEL_REGISTRY["tier1_lgbm"] = joblib.load(ARTIFACTS_DIR / "tier1_lightgbm.pkl")
-#         MODEL_REGISTRY["tier2_iforest"] = joblib.load(ARTIFACTS_DIR / "tier2_isolation_forest.pkl")
-#         MODEL_REGISTRY["tier3_ppo"] = PPO.load(ARTIFACTS_DIR / "tier3_ppo_agent_scaled")
-        
-#         # Hydrate the SHAP Explainer into server core cache memory
-#         print("[STARTUP] Initializing TreeExplainer Core wrapper...")
-#         MODEL_REGISTRY["shap_explainer"] = ThreatExplainer(ARTIFACTS_DIR)
-        
-#         # Safely extract and cache the exact 78 training features and their order from LightGBM
-#         t1_model = MODEL_REGISTRY["tier1_lgbm"]
-#         if hasattr(t1_model, "feature_name_"):
-#             MODEL_REGISTRY["expected_features"] = t1_model.feature_name_
-#         elif hasattr(t1_model, "feature_name"):
-#             MODEL_REGISTRY["expected_features"] = t1_model.feature_name()
-#         else:
-#             raise AttributeError("Could not extract feature schema names from the loaded Tier 1 model.")
-
-#         print("[STARTUP] All multi-tier defensive and XAI architectures loaded successfully.\n")
-#     except Exception as e:
-#         print(f"[CRITICAL] Failed to map model artifacts on startup: {str(e)}")
-#         raise RuntimeError(e)
-
-# def align_input_features(payload_features: dict) -> pd.DataFrame:
-#     """
-#     Validates incoming partial telemetry shapes and builds a 78-feature DataFrame 
-#     matching the training schema order, defaulting missing features to 0.0.
-#     """
-#     expected_features = MODEL_REGISTRY.get("expected_features")
-#     if not expected_features:
-#         raise ValueError("Model feature schema is missing from registry.")
-    
-#     # Reconstruct the feature dictionary with strict ordering and default values
-#     aligned_dict = {feat: payload_features.get(feat, 0.0) for feat in expected_features}
-#     return pd.DataFrame([aligned_dict])
-
-# @app.get("/v1/health", status_code=status.HTTP_200_OK)
-# def structural_health_check():
-#     """Verifies service readiness and confirms models are fully hydrated in memory."""
-#     missing_components = [k for k, v in MODEL_REGISTRY.items() if v is None]
-#     if missing_components:
-#         raise HTTPException(
-#             status_code=503, 
-#             detail=f"Service Unhealthy. Missing components: {missing_components}"
-#         )
-#     return {"status": "ONLINE", "cached_models": list(MODEL_REGISTRY.keys())}
-
-# @app.post("/v1/analyze-packet", response_model=DefenseDecisionResponse, status_code=status.HTTP_200_OK)
-# async def process_network_telemetry(payload: NetworkPacketInput):
-#     """
-#     Consumes live packet traffic telemetry, runs multi-stage inference filters, 
-#     and returns an optimized firewall mitigation command.
-#     """
-#     start_time = time.perf_counter()
-
-#     try:
-#         # Step 1: Align incoming features to the structural 78-column schema
-#         input_df = align_input_features(payload.features)
-
-#         # Step 2: Tier 1 Inference (LightGBM)
-#         t1_preds = MODEL_REGISTRY["tier1_lgbm"].predict(input_df)
-#         predicted_class_idx = np.argmax(t1_preds[0])
-#         threat_class_string = MODEL_REGISTRY["label_encoder"].inverse_transform([predicted_class_idx])[0]
-
-#         # Step 3: Tier 2 Inference (Isolation Forest)
-#         anomaly_features = [
-#             'Flow Duration', 'Total Fwd Packets', 'Total Backward Packets',
-#             'Fwd Packet Length Max', 'Fwd Packet Length Min', 'Fwd Packet Length Mean',
-#             'Bwd Packet Length Max', 'Bwd Packet Length Min', 'Bwd Packet Length Mean',
-#             'Flow Bytes/s', 'Flow Packets/s', 'Flow IAT Mean', 'Flow IAT Max', 'Flow IAT Min',
-#             'Fwd Header Length', 'Bwd Header Length', 'Packet Length Variance',
-#             'Average Packet Size', 'Avg Fwd Segment Size', 'Avg Bwd Segment Size'
-#         ]
-#         t2_score = MODEL_REGISTRY["tier2_iforest"].decision_function(input_df[anomaly_features])[0]
-
-#         # Step 4: Tier 3 Optimization (PPO Reinforcement Learning)
-#         system_load_vector = np.array([payload.current_system_load], dtype=np.float32)
-#         observation_state = np.hstack([
-#             t1_preds[0], 
-#             np.array([t2_score], dtype=np.float32), 
-#             system_load_vector
-#         ]).astype(np.float32)
-
-#         action_idx, _ = MODEL_REGISTRY["tier3_ppo"].predict(observation_state, deterministic=True)
-#         action_map = {0: "ALLOW", 1: "THROTTLE", 2: "DROP", 3: "HONEYPOT"}
-#         final_directive = action_map.get(int(action_idx), "DROP")
-
-#         latency = (time.perf_counter() - start_time) * 1000.0
-
-#         return DefenseDecisionResponse(
-#             packet_status="processed",
-#             tier1_primary_threat_class=threat_class_string,
-#             tier2_anomaly_score=float(t2_score),
-#             recommended_action=final_directive,
-#             action_code=int(action_idx),
-#             processing_latency_ms=round(latency, 2)
-#         )
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Inference failure: {str(e)}")
-
-# @app.post("/v1/explain-packet", response_model=PacketExplanationResponse, status_code=status.HTTP_200_OK)
-# async def explain_network_telemetry(payload: NetworkPacketInput, top_n: int = 5):
-#     """
-#     Exposes a localized XAI layer for security analysts. Processes a single 
-#     untrusted packet and returns a mathematical SHAP explanation breakdown.
-#     """
-#     try:
-#         # Align incoming features to guarantee shape safety for the SHAP Explainer
-#         input_df = align_input_features(payload.features)
-        
-#         explainer_engine = MODEL_REGISTRY["shap_explainer"]
-#         explanation_payload = explainer_engine.explain_packet(input_df, top_n=top_n)
-        
-#         return explanation_payload
-
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail=f"SHAP Forensics Engine execution failure: {str(e)}"
-#         )
-
-
-
+from dotenv import load_dotenv
+load_dotenv()
 import time
 import joblib
 import numpy as np
@@ -158,6 +10,7 @@ from pydantic import BaseModel, Field
 from typing import Dict, List, Optional
 from stable_baselines3 import PPO
 from app.shap_explainer import ThreatExplainer
+from app.alerts import AlertManager
 
 # Exact 78 feature names in training order — used to reindex every incoming packet
 FEATURE_COLUMNS = [
@@ -201,6 +54,7 @@ app = FastAPI(
 
 # Global model registry — loaded once at startup, reused for every request
 MODELS = {}
+ALERT_MANAGER = None
 
 # =====================================================================
 # --- SCHEMAS
@@ -376,6 +230,8 @@ def load_models():
         print(f"  Classes     : {MODELS['class_names']}")
         print(f"  BENIGN idx  : {MODELS['benign_idx']}")
         print(f"  Anomaly thr : {MODELS['anomaly_threshold']:.4f}\n")
+        global ALERT_MANAGER
+        ALERT_MANAGER = AlertManager()
 
     except Exception as e:
         print(f"[CRITICAL] Model loading failed: {e}")
@@ -433,12 +289,15 @@ def compute_alert_level(
 ) -> str:
     if predicted_class == "BENIGN" and not t2_anomalous:
         return "GREEN"
-    if action == "ALLOW":
-        return "YELLOW"
+    # Tier 2 caught something even if Tier 1 missed it
+    if t2_anomalous and predicted_class == "BENIGN":
+        return "ORANGE"
     if predicted_class in ("DDoS", "DoS GoldenEye", "DoS Hulk", "Heartbleed"):
         return "RED"
     if action in ("DROP", "HONEYPOT"):
         return "ORANGE"
+    if action == "ALLOW":
+        return "YELLOW"
     return "YELLOW"
 
 
@@ -531,6 +390,17 @@ def analyze_packet(payload: PacketInput):
             predicted_class, confidence, t2_anomalous, action
         )
 
+        # ---- Fire Alert (ORANGE / RED only) ----
+        ALERT_MANAGER.process(
+            alert_level=alert_level,
+            threat_class=predicted_class,
+            confidence=confidence,
+            action=action,
+            anomaly_score=t2_score,
+            shap_verdict=shap_verdict,
+            shap_top_features=shap_top_features,
+        )
+
         processing_ms = round((time.perf_counter() - start) * 1000, 2)
 
         return AnalysisResponse(
@@ -572,3 +442,14 @@ def analyze_batch(packets: List[PacketInput]):
         results.append(analyze_packet(packet))
 
     return results
+
+@app.get("/alerts")
+def get_recent_alerts(limit: int = 50):
+    """
+    Returns the most recent ORANGE/RED alerts fired by the RL agent.
+    Used by the dashboard to populate the live alert feed.
+    """
+    return {
+        "alerts": ALERT_MANAGER.get_recent(limit=limit),
+        "counts": ALERT_MANAGER.get_counts(),
+    }

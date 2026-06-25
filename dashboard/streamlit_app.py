@@ -238,6 +238,30 @@ def main():
             st.session_state.running = False
 
         st.divider()
+        st.subheader("Recent Alerts")
+        try:
+            r = requests.get(f"{API_URL}/alerts?limit=5", timeout=2)
+            if r.status_code == 200:
+                data = r.json()
+                counts = data.get("counts", {})
+                st.metric("Total Alerts", counts.get("total", 0))
+                a1, a2 = st.columns(2)
+                a1.metric("RED", counts.get("RED", 0), delta=None)
+                a2.metric("ORANGE", counts.get("ORANGE", 0), delta=None)
+                alerts = data.get("alerts", [])
+                for alert in alerts[:3]:
+                    color = "#d50000" if alert["alert_level"] == "RED" else "#ff6d00"
+                    st.markdown(
+                        f"<div style='border-left:3px solid {color};padding:4px 8px;margin:4px 0;font-size:12px'>"
+                        f"<b>{alert['alert_level']}</b> — {alert['threat_class']}<br>"
+                        f"<span style='color:gray'>{alert['timestamp']}</span>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+        except Exception:
+            st.caption("Alert feed unavailable")
+
+        st.divider()
         st.caption("CICIDS2017 Dataset Simulation")
         st.caption("Three-Tier Autonomous Defense")
 
