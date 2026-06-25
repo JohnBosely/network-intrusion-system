@@ -262,7 +262,7 @@ def main():
             st.caption("Alert feed unavailable")
 
         st.divider()
-        st.caption("CICIDS2017 Dataset Simmulation")
+        st.caption("CICIDS2017 Dataset Simulation")
         st.caption("Three-Tier Autonomous Defense")
 
     # ---- Header ----
