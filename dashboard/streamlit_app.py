@@ -263,7 +263,7 @@ def main():
 
         st.divider()
         st.caption("CICIDS2017 Dataset Simulation")
-        st.caption("Three-Tier Autmmonomous Defense")
+        st.caption("Three-Tier Autonomous Defense")
 
     # ---- Header ----
     st.title("🛡️ Autonomous Network Intrusion Detection System")
