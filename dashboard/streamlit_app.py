@@ -197,7 +197,7 @@ def main():
 
     # ---- Sidebar ----
     with st.sidebar:
-        st.title("🛡️ NIDS Control Panel")
+        st.title("NIDS Control Panel")
         st.divider()
 
         api_ok = check_api_health()
@@ -266,7 +266,7 @@ def main():
         st.caption("Three-Tier Autonomous Defense")
 
     # ---- Header ----
-    st.title("🛡️ Autonomous Network Intrusion Detection System")
+    st.title("Autonomous Network Intrusion Detection System")
     st.caption("Live Threat Monitor — LightGBM · Isolation Forest · PPO RL Agent · SHAP")
 
     # ---- KPI Row ----
