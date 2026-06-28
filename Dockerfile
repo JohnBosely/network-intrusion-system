@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir --timeout 300 --retries 10 \
     torch==2.3.0+cpu
 
 RUN pip install --no-cache-dir --timeout 300 --retries 10 \
-    numpy==1.26.4 \
+    numpy==2.0.0 \
     pandas==2.2.2 \
     scikit-learn==1.4.2 \
     lightgbm==4.3.0 \
