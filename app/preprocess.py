@@ -117,8 +117,29 @@ def preprocess_chronological(data_dir_path, sample_size=100000):
     train_dfs = []
     test_dfs = []
 
-    for file in files:
-        df = pd.read_csv(file)
+    # Per-file row budget: spread sample_size proportionally across files
+    # so we never load the full 2.26M rows into RAM before sampling.
+    # This is the fix for the OOM crash at 400k sample size.
+    if sample_size is not None:
+        # Estimate rows per file with a cheap header-only scan
+        file_sizes = []
+        for file in files:
+            # count lines without loading data — fast
+            with open(file, 'rb') as f:
+                n = sum(1 for _ in f) - 1  # subtract header
+            file_sizes.append(max(n, 1))
+        total_rows = sum(file_sizes)
+        # Each file gets a proportional slice of the sample budget,
+        # but read at least 2x what we need so the 80/20 split has room
+        per_file_budget = [
+            int((s / total_rows) * sample_size * 2.5)
+            for s in file_sizes
+        ]
+    else:
+        per_file_budget = [None] * len(files)
+
+    for file, budget in zip(files, per_file_budget):
+        df = pd.read_csv(file, nrows=budget)
         df.columns = df.columns.str.strip()
         df = remove_infinite_values(df)
         df = clean_labels(df)
