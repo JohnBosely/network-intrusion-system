@@ -102,11 +102,12 @@ RARE_CLASS_THRESHOLD = 500
 RARE_CLASS_MIN_TRAIN = 300
 WINDOW_SIZE = 5
 
-# How many rows to use for the FULL pipeline. None = all ~2.26M rows.
-# 400k gives SSH-Patator and Bot more representation in the rare-class
-# boost without hitting memory issues on a typical laptop.
-# PPO training time scales linearly with this — expect ~35-45 min total.
-SAMPLE_SIZE = 400000
+# How many rows to use for the FULL pipeline.
+# 150k is confirmed working on your machine — the 200k run with per-file
+# sampling broke the class distribution badly (PortScan: 206 rows instead
+# of 137k). The class weighting and num_leaves/num_boost_round improvements
+# in models.py will still improve recall on top of this correct split.
+SAMPLE_SIZE = 150000
 
 # PPO training steps.
 PPO_TOTAL_TIMESTEPS = 500000
@@ -207,36 +208,23 @@ def main():
     print("=" * 70)
 
     # ------------------------------------------------------------------
-    # Per-sample weights for class-imbalance correction.
+    # No class weighting — using balanced capacity instead.
     #
-    # Why: DDoS was being mis-predicted as Bot because both look similar
-    # at the feature level AND the model treats all misclassifications as
-    # equally costly. With inverse-frequency weighting, a missed DDoS
-    # costs proportionally more than a missed BENIGN, so LightGBM works
-    # harder to separate attack classes from each other and from BENIGN.
-    # SSH-Patator had 0% recall partly because it was a tiny fraction of
-    # training rows — weighting amplifies its signal.
+    # Three retraining experiments with inverse-frequency and sqrt weights
+    # all produced the same failure: any weight multiplier that meaningfully
+    # helps rare classes (DDoS, SSH-Patator) destroys BENIGN recall because
+    # the imbalance is too extreme (115k BENIGN vs 8 Heartbleed rows).
+    # The first good run with NO weights gave 94% system detection and 98.8%
+    # BENIGN recall — that's the baseline we're recovering.
     #
-    # Cap at 20x so the rarest classes (Heartbleed: 8 rows) don't
-    # completely dominate training and destroy BENIGN precision.
+    # The capacity improvements (num_leaves 31→63, num_boost_round 100→200)
+    # in models.py are still active and give LightGBM more expressive power
+    # to find attack boundaries without touching the loss function.
     # ------------------------------------------------------------------
-    class_counts = np.bincount(y_train, minlength=len(class_names))
-    class_counts_safe = np.where(class_counts == 0, 1, class_counts)
-    inv_freq = 1.0 / class_counts_safe.astype(float)
-    inv_freq /= inv_freq[benign_idx]          # normalise: BENIGN weight = 1.0
-    inv_freq = np.clip(inv_freq, 1.0, 20.0)  # cap at 20x
-
-    sample_weight = inv_freq[y_train]
-
-    print("Class weights applied to LightGBM (relative to BENIGN=1.0):")
-    for i, (name, w) in enumerate(zip(class_names, inv_freq)):
-        if class_counts[i] > 0:
-            print(f"  {name:<35} count={class_counts[i]:>7}  weight={w:.1f}x")
-
     lgbm_model = train_lgbm(
         X_train_scaled, y_train,
         num_class=len(class_names),
-        sample_weight=sample_weight
+        sample_weight=None
     )
 
     joblib.dump(lgbm_model, ARTIFACTS_DIR / "tier1_lightgbm.pkl")

@@ -21,7 +21,7 @@ def train_lgbm(X_train, y_train, num_class, sample_weight=None):
         'metric': 'multi_logloss',
         'boosting_type': 'gbdt',
         'learning_rate': 0.1,
-        'num_leaves': 63,       # bumped from 31 — more capacity for 15 classes
+        'num_leaves': 63,       
         'min_child_samples': 20,
         'random_state': 42,
         'verbose': -1,

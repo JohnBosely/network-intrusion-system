@@ -6,7 +6,6 @@ from preprocess import preprocess_chronological
 SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_DIR = SCRIPT_DIR.parent / "data" / "MachineLearningCVE"
 
-# Load with current chronological split
 X_train, X_test, y_train_raw, y_test_raw = preprocess_chronological(
     data_dir_path=DATA_DIR,
     sample_size=100000

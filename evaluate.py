@@ -1,31 +1,3 @@
-"""
-evaluate.py — Full pipeline evaluation on the held-out test set.
-
-Runs every test-set row through the EXACT inference path main.py uses
-(raw features -> scaler.transform -> LightGBM -> IsolationForest -> PPO)
-and reports:
-
-  1. Tier 1 (LightGBM) per-class precision / recall / F1 + confusion matrix
-  2. Tier 2 (Isolation Forest) catch-rate: of the attacks Tier 1 missed,
-     how many did Tier 2 flag as anomalous?
-  3. Tier 3 (PPO) action distribution: what does the RL agent actually do
-     when it sees a real attack vs real benign traffic?
-  4. Overall system alert-level breakdown (GREEN/YELLOW/ORANGE/RED), using
-     the same compute_alert_level() logic as main.py
-
-This is the script that produces real numbers for the README instead of
-a 10-row anecdotal spot check.
-
-USAGE
------
-Save in the project ROOT (same place as retrain.py), run from anywhere:
-
-    python evaluate.py
-
-Uses the SAME test split logic as retrain.py (chronological + rare-class
-boost) so results reflect held-out data the model never trained on.
-"""
-
 import sys
 import time
 import joblib
@@ -57,15 +29,10 @@ ANOMALY_FEATURE_SET = [
 
 WINDOW_SIZE = 5
 
-# How many test rows to evaluate. None = use the full held-out test split.
-# Start with a number for a fast sanity check; rerun with None for the
-# real README numbers once you're confident the pipeline is solid.
+
 EVAL_SAMPLE_SIZE = None
 
-# Same SAMPLE_SIZE used to build the train/test split in retrain.py —
-# MUST match what you actually trained with, or the test split won't
-# line up with what the model has/hasn't seen.
-TRAIN_SAMPLE_SIZE = 200000
+TRAIN_SAMPLE_SIZE = 150000
 
 
 def compute_alert_level(predicted_class, confidence, t2_anomalous, action):

@@ -57,7 +57,6 @@ def build_observation_matrix(lgbm, iforest, label_encoder, X_test_scaled, anomal
     t1_probs  = lgbm.predict(X_test_scaled)
     t2_scores = iforest.decision_function(X_test_scaled[anomaly_features])
 
-    # Rolling threat rate — same logic as train.py
     y_pred_test = np.argmax(t1_probs, axis=1)
     benign_idx_local = int(np.where(label_encoder.classes_ == "BENIGN")[0][0])
     is_predicted_attack = (y_pred_test != benign_idx_local).astype(float)
