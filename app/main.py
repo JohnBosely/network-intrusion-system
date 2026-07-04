@@ -338,9 +338,14 @@ def analyze_packet(payload: PacketInput):
         columns=FEATURE_COLUMNS
     )
 
-    # Scale to match training distribution
+  # Scale using space-named columns (how scaler was fitted in preprocess.py)
+    # then rename back to underscore format for LightGBM
+    scaler_cols = list(MODELS["scaler"].feature_names_in_)
+    packet_df_scaler = packet_df.rename(
+        columns={col: scaler_cols[i] for i, col in enumerate(FEATURE_COLUMNS)}
+    )
     packet_df = pd.DataFrame(
-        MODELS["scaler"].transform(packet_df),
+        MODELS["scaler"].transform(packet_df_scaler),
         columns=FEATURE_COLUMNS
     )
 

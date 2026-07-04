@@ -75,8 +75,13 @@ def load_sample_packets(n=500):
         if not fpath.exists():
             continue
         try:
-            df = pd.read_csv(fpath, encoding="utf-8", on_bad_lines="skip", skiprows=range(1, 18000), nrows=5000)
+            try:
+                df = pd.read_csv(fpath, encoding="utf-8", on_bad_lines="skip",
+                                skiprows=range(1, 15000), nrows=5000)
+            except Exception:
+                df = pd.read_csv(fpath, encoding="utf-8", on_bad_lines="skip", nrows=3000)
             df.columns = df.columns.str.strip()
+
             if "Label" not in df.columns:
                 continue
             attack = df[df["Label"] != "BENIGN"].head(int(n * 0.7 / len(priority_files)))

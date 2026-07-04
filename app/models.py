@@ -21,14 +21,13 @@ def train_lgbm(X_train, y_train, num_class, sample_weight=None):
         'metric': 'multi_logloss',
         'boosting_type': 'gbdt',
         'learning_rate': 0.1,
-        'num_leaves': 63,       
-        'min_child_samples': 20,
+        'num_leaves': 31,
         'random_state': 42,
         'verbose': -1,
     }
 
     print("Fitting LightGBM Classifier...")
-    model = lgb.train(params, train_data, num_boost_round=200)
+    model = lgb.train(params, train_data, num_boost_round=100)
     return model
 
 
