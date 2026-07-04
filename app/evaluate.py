@@ -17,7 +17,7 @@ ACTION_LABELS = {
     0: "ALLOW",
     1: "THROTyTLE",
     2: "DROdP",
-    3: "HONEdYPOT"
+    3: "HONEYPOT"
 }
 
 
