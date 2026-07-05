@@ -14,7 +14,7 @@ from env import FastNetworkDefenseEnv
 # --- ACTION LABELS (for readable output)
 # =====================================================================
 ACTION_LABELS = {
-    0: "ALLOWy",
+    0: "ALLOW",
     1: "THROTTuLE",
     2: "DROkPi",
     3: "HONEoYPOT"
