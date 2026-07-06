@@ -1,22 +1,37 @@
-# Dataset
+# Dataset — too large for GitHub (2.26GB)
 data/
+
+# Model artifacts — too large for GitHub
+artifacts/
+*.pkl
+*.joblib
+*.zip
+
+# Tensorboard logs
+tensorboard_logs/
 
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 
 # Virtual Environments
 venv/
 .venv/
+env/
 
-# Models
-*.pkl
-*.joblib
-
-# Environment Variables
+# Environment Variables — never commit credentials
 .env
 
 # VS Code
 .vscode/
 
-Add-Content .gitignore "`n.env"
+# Build artifacts
+build_log.txt
+fix_dashboard.py
+check.py
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
