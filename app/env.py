@@ -4,9 +4,9 @@ from gymnasium import spaces
 
 class FastNetworkDefenseEnv(gym.Env):
     """
-    An ultra-optimized Gymnasium environment.
-    Accepts pre-computed predictions to completely eliminate row-by-row 
-    inference overhead during RL agent training loops.
+    A fast AI training simulator that uses 
+    pre-saved data so the AI doesn't have to 
+    pause and calculate things step-by-step.
     """
     metadata = {"render_modes": ["human"]}
 

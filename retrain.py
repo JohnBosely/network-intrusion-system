@@ -1,57 +1,3 @@
-"""
-retrain.py — Single source of truth for the full NIDS training pipeline.
-
-THE BUG THIS FIXES
--------------------
-Previously, the scaler was fit and discarded TWICE, in two different
-scripts, training on two different data samples:
-
-  1. app/train.py (Tier 1+2)   -> fits scaler on its own X_train -> THIS one
-                                   was correctly saved as feature_scaler.pkl
-                                   in the last session's fix.
-  2. app/train.py (Tier 3/PPO) -> calls scale_features(X_train, X_test)
-                                   AGAIN on a *different* data sample
-                                   (different sample_size, different rows)
-                                   -> refits a brand new StandardScaler
-                                   -> discards it with `_`
-                                   -> PPO trains on features scaled by a
-                                   scaler that is never saved and never
-                                   matches the one main.py actually loads
-                                   at inference time.
-
-Even after last session's fix to preprocess.py (which made scale_features
-return the scaler correctly), the PPO training script was STILL calling
-scale_features() a second independent time on a different data pull,
-producing a second, different, throwaway scaler. Tier 1/2 and Tier 3 were
-silently trained on two different feature geometries.
-
-THE FIX
--------
-Fit ONE scaler, ONCE, on Tier 1's training split. Save it immediately.
-Reuse that exact same fitted scaler object (never refit) for:
-  - Tier 1 (LightGBM)            -> scaled 78 features
-  - Tier 2 (Isolation Forest)    -> scaled subset of 20 features
-  - Tier 3 (PPO)                 -> scaled features feed LightGBM/IForest
-                                     predictions, which become the PPO
-                                     observation vector
-
-This script runs the entire pipeline in one process, in the correct
-order, so there is no possibility of a second silent refit creeping in.
-
-USAGE
------
-Save this file in the project ROOT (next to app/, artifacts/, data/),
-NOT inside app/. Then run it from anywhere - it adds app/ to sys.path
-itself, so either of these works from PowerShell:
-
-    cd network-intrusion-system
-    python retrain.py
-
-    # or, equivalently, from inside app/
-    cd app
-    python ../retrain.py
-"""
-
 import sys
 import time
 import joblib
@@ -86,7 +32,7 @@ from preprocess import (
 )
 
 # =====================================================================
-# --- CONSTANTS (must match main.py exactly)
+# --- CONSTANTS 
 # =====================================================================
 
 ANOMALY_FEATURE_SET = [
@@ -141,7 +87,6 @@ def main():
 
     # =================================================================
     # STEP 1: LOAD + SPLIT (chronological + rare-class boost)
-    #         This is your existing, already-correct preprocess.py logic.
     # =================================================================
     print("\n" + "=" * 70)
     print("STEP 1 — Loading and splitting data")
@@ -167,8 +112,6 @@ def main():
 
     # =================================================================
     # STEP 2: FIT THE SCALER — ONCE — AND NEVER AGAIN
-    #         This is the critical fix. Every downstream consumer
-    #         (Tier 1, Tier 2, Tier 3) uses THIS exact fitted object.
     # =================================================================
     print("\n" + "=" * 70)
     print("STEP 2 — Fitting THE ONE scaler (used by all 3 tiers)")
@@ -207,20 +150,7 @@ def main():
     print("STEP 3 — Training Tier 1 (LightGBM)")
     print("=" * 70)
 
-    # ------------------------------------------------------------------
-    # No class weighting — using balanced capacity instead.
-    #
-    # Three retraining experiments with inverse-frequency and sqrt weights
-    # all produced the same failure: any weight multiplier that meaningfully
-    # helps rare classes (DDoS, SSH-Patator) destroys BENIGN recall because
-    # the imbalance is too extreme (115k BENIGN vs 8 Heartbleed rows).
-    # The first good run with NO weights gave 94% system detection and 98.8%
-    # BENIGN recall — that's the baseline we're recovering.
-    #
-    # The capacity improvements (num_leaves 31→63, num_boost_round 100→200)
-    # in models.py are still active and give LightGBM more expressive power
-    # to find attack boundaries without touching the loss function.
-    # ------------------------------------------------------------------
+
     lgbm_model = train_lgbm(
         X_train_scaled, y_train,
         num_class=len(class_names),
@@ -232,8 +162,7 @@ def main():
     print(f"[SAVED] {ARTIFACTS_DIR / 'tier1_lightgbm.pkl'}")
     print(f"[SAVED] {ARTIFACTS_DIR / 'label_encoder.pkl'}")
 
-    # Quick sanity check: does the model actually recognise attacks on
-    # scaled data now? This is the check that was silently failing before.
+   
     print("\n--- Tier 1 sanity check on held-out test set ---")
     test_probs = lgbm_model.predict(X_test_scaled)
     test_pred = np.argmax(test_probs, axis=1)
@@ -252,8 +181,6 @@ def main():
 
     # =================================================================
     # STEP 4: TIER 2 — Isolation Forest + threshold sweep
-    #         (identical logic to your existing train.py, reusing the
-    #          single scaler's output instead of refitting anything)
     # =================================================================
     print("\n" + "=" * 70)
     print("STEP 4 — Training Tier 2 (Isolation Forest) + threshold sweep")
@@ -338,8 +265,7 @@ def main():
     print(f"[SAVED] {ARTIFACTS_DIR / 'system_config.txt'}")
 
     # =================================================================
-    # STEP 5: TIER 3 — PPO, using the SAME scaled training data
-    #         (no second scale_features() call, no second scaler fit)
+    # STEP 5: TIER 3 — PPO
     # =================================================================
     print("\n" + "=" * 70)
     print("STEP 5 — Precomputing PPO observation matrix (Tier 1 + Tier 2 outputs)")
@@ -412,10 +338,6 @@ def main():
 
     # =================================================================
     # STEP 7: END-TO-END VERIFICATION
-    #         Replays main.py's exact inference path on a few real
-    #         attack rows pulled straight from the test set, using the
-    #         SAME scaler object that was just saved. This is the check
-    #         that would have caught the original bug immediately.
     # =================================================================
     print("\n" + "=" * 70)
     print("STEP 7 — End-to-end verification (mirrors main.py inference path)")

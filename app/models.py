@@ -34,7 +34,8 @@ def train_lgbm(X_train, y_train, num_class, sample_weight=None):
 def train_isolation_forest(X_train, y_train, benign_idx, contamination=0.05):
     """
     Trains an unsupervised Isolation Forest exclusively on BENIGN data
-    to establish a secure network baseline.
+    to establish a secure network baseline (If it learns only on benign 
+    data it woud easily classify packets it hasn't seen).
     """
     print("Filtering training data for pure BENIGN traffic...")
     normal_traffic = X_train[y_train == benign_idx]

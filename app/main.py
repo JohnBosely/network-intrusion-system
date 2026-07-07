@@ -5,14 +5,14 @@ import joblib
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional
 from stable_baselines3 import PPO
 from app.shap_explainer import ThreatExplainer
 from app.alerts import AlertManager
 
-# Exact 78 feature names in training order — used to reindex every incoming packet
+# Exact 78 feature names in training order, so this was used to reindex every incoming packet by their exact names
 FEATURE_COLUMNS = [
     'Destination_Port', 'Flow_Duration', 'Total_Fwd_Packets', 'Total_Backward_Packets',
     'Total_Length_of_Fwd_Packets', 'Total_Length_of_Bwd_Packets',
@@ -38,10 +38,8 @@ FEATURE_COLUMNS = [
     'Active_Mean', 'Active_Std', 'Active_Max', 'Active_Min',
     'Idle_Mean', 'Idle_Std', 'Idle_Max', 'Idle_Min'
 ]
-# =====================================================================
-# --- APP INIT
-# =====================================================================
 
+# ── App Init ── #
 app = FastAPI(
     title="Autonomous Network Intrusion Detection System",
     description=(
@@ -56,15 +54,12 @@ app = FastAPI(
 MODELS = {}
 ALERT_MANAGER = None
 
-# =====================================================================
-# --- SCHEMAS
-# =====================================================================
-
+# ── Schemas ── #
 class PacketInput(BaseModel):
     """
     Incoming network packet with 78 flow features.
     Feature names match the CIC-IDS2017 dataset column headers exactly.
-    Values should be raw (unscaled) — the API handles scaling internally.
+    Values should be raw (unscaled), the API handles scaling internally.
     """
     features: Dict[str, float] = Field(
         ...,
@@ -186,15 +181,14 @@ class AnalysisResponse(BaseModel):
     system_alert_level: str
 
 
-# =====================================================================
-# --- STARTUP: LOAD ALL MODELS ONCE
-# =====================================================================
+# ── Startup: Load all models at once ── #
+
 
 @app.on_event("startup")
 def load_models():
     """
-    Loads all artifacts into memory at startup.
-    FastAPI keeps these alive for the lifetime of the server process —
+    Loads all artifacts into memory at startup so,
+    FastAPI keeps these alive for the lifetime of the server process,
     no reloading per request.
     """
     print("\n[STARTUP] Loading all model artifacts...")
@@ -210,9 +204,9 @@ def load_models():
         MODELS["scaler"] = joblib.load(ARTIFACTS_DIR / "feature_scaler.pkl")
         MODELS["explainer"]     = ThreatExplainer(ARTIFACTS_DIR)
 
-        # Load the scaler — we fit a new one on startup using saved artifacts
+        # Load the scaler, this would fit a new one on startup using saved artifacts
         # In production you would save/load the scaler object too
-        # For now we flag that raw features need scaling
+        # For now just flag that raw features need scaling
         MODELS["class_names"]   = list(MODELS["label_encoder"].classes_)
         MODELS["benign_idx"]    = int(
             np.where(np.array(MODELS["class_names"]) == "BENIGN")[0][0]
@@ -238,10 +232,7 @@ def load_models():
         raise RuntimeError(e)
 
 
-# =====================================================================
-# --- ANOMALY FEATURES (same list used in training)
-# =====================================================================
-
+## ── Anomaly Feaures ── #
 ANOMALY_FEATURES = [
     'Flow_Duration', 'Total_Fwd_Packets', 'Total_Backward_Packets',
     'Fwd_Packet_Length_Max', 'Fwd_Packet_Length_Min', 'Fwd_Packet_Length_Mean',
@@ -254,10 +245,7 @@ ANOMALY_FEATURES = [
 WINDOW_SIZE = 5  # Must match what train.py used
 
 
-# =====================================================================
-# --- HELPER: BUILD OBSERVATION VECTOR FOR RL AGENT
-# =====================================================================
-
+# ── This builds the observation vector for the RL agent ── #
 def build_observation(t1_probs: np.ndarray, t2_score: float) -> np.ndarray:
     """
     Builds the 85-dimensional sliding window observation vector.
@@ -277,9 +265,7 @@ def build_observation(t1_probs: np.ndarray, t2_score: float) -> np.ndarray:
     return windowed
 
 
-# =====================================================================
-# --- HELPER: ALERT LEVEL
-# =====================================================================
+# ── Alert Level ── #
 
 def compute_alert_level(
     predicted_class: str,
@@ -301,9 +287,7 @@ def compute_alert_level(
     return "YELLOW"
 
 
-# =====================================================================
-# --- ROUTES
-# =====================================================================
+# ── Routes ── #
 
 @app.get("/health", status_code=200)
 def health_check():
@@ -338,8 +322,6 @@ def analyze_packet(payload: PacketInput):
         columns=FEATURE_COLUMNS
     )
 
-  # Scale using space-named columns (how scaler was fitted in preprocess.py)
-    # then rename back to underscore format for LightGBM
     scaler_cols = list(MODELS["scaler"].feature_names_in_)
     packet_df_scaler = packet_df.rename(
         columns={col: scaler_cols[i] for i, col in enumerate(FEATURE_COLUMNS)}

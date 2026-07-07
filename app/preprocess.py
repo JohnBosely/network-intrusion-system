@@ -8,9 +8,8 @@ from sklearn.ensemble import IsolationForest
 
 from models import train_lgbm
 
-# =====================================================================
-# --- CONSTANTS
-# =====================================================================
+# ── Constants ── #
+
 
 ANOMALY_FEATURE_SET = [
     'Flow Duration', 'Total Fwd Packets', 'Total Backward Packets',
@@ -28,9 +27,8 @@ RARE_CLASS_THRESHOLD = 500
 RARE_CLASS_MIN_TRAIN = 300
 
 
-# =====================================================================
-# --- VALIDATION
-# =====================================================================
+# ── Validation ── #
+
 
 def verify_environment(data_dir_path):
     target_path = Path(data_dir_path)
@@ -49,9 +47,7 @@ def verify_environment(data_dir_path):
     print(f"Verification passed. Detected {len(csv_files)} source files.")
 
 
-# =====================================================================
-# --- CLEANING
-# =====================================================================
+# ── Cleaning ── #
 
 def remove_infinite_values(df):
     num_cols = df.select_dtypes(include=[np.number]).columns
@@ -65,9 +61,8 @@ def clean_labels(df):
     return df
 
 
-# =====================================================================
-# --- SCALING
-# =====================================================================
+
+# ── Scaling ── #
 
 def scale_features(X_train, X_test):
     scaler = StandardScaler()
@@ -84,9 +79,8 @@ def scale_features(X_train, X_test):
     return X_train_scaled, X_test_scaled, scaler  # ← add scaler
 
 
-# =====================================================================
-# --- CORE PREPROCESSING — HYBRID STRATIFIED SPLIT
-# =====================================================================
+
+# ── Core Preprocessing: Hybrid Stratified Split ── #
 
 def preprocess_chronological(data_dir_path, sample_size=100000):
     """
@@ -127,16 +121,17 @@ def preprocess_chronological(data_dir_path, sample_size=100000):
         train_dfs.append(df.iloc[:cutoff].copy())
         test_dfs.append(df.iloc[cutoff:].copy())
         print(f" Split {file.name} at row {cutoff}")
-        del df  # ← ADD THIS LINE
+        del df 
 
     full_train = pd.concat(train_dfs, ignore_index=True)
-    del train_dfs  # ← SPLIT THE del INTO TWO
+    del train_dfs 
     full_test = pd.concat(test_dfs, ignore_index=True)
-    del test_dfs   # ← SEPARATE del
+    del test_dfs
 
-    # ----------------------------------------------------------------
-    # STEP 2: Identify rare classes in training
-    # ----------------------------------------------------------------
+
+
+    # ── Identify rare classes in training ── #
+
     train_label_counts = full_train['Label'].value_counts()
     benign_label = 'BENIGN'
 
@@ -157,9 +152,10 @@ def preprocess_chronological(data_dir_path, sample_size=100000):
     print(f"Target minimum: {RARE_CLASS_MIN_TRAIN} examples per rare class")
     print(f"Rare classes detected: {rare_classes}")
 
-    # ----------------------------------------------------------------
-    # STEP 3: Pull rare class examples from test into training
-    # ----------------------------------------------------------------
+
+
+    # ── Pull rare class examples from test into training ── #
+
     rows_to_move = []
 
     for cls in rare_classes:
@@ -194,9 +190,10 @@ def preprocess_chronological(data_dir_path, sample_size=100000):
         else:
             print(f"  {cls}: only {available} in test, keeping all there for evaluation")
 
-    # ----------------------------------------------------------------
-    # STEP 4: Apply the moves
-    # ----------------------------------------------------------------
+
+
+    # ── Apply the earlier move ── #
+
     if rows_to_move:
         boost_df = pd.concat(rows_to_move, ignore_index=True)
         moved_indices = boost_df.index
@@ -211,9 +208,10 @@ def preprocess_chronological(data_dir_path, sample_size=100000):
     else:
         print("\n  No rows needed to be moved.")
 
-    # ----------------------------------------------------------------
-    # STEP 5: Print updated distributions
-    # ----------------------------------------------------------------
+    
+
+    # ── Print updated distributions ── #
+
     print(f"\n--- Updated Training Distribution (after boost) ---")
     updated_counts = full_train['Label'].value_counts()
     print(updated_counts)
@@ -221,9 +219,10 @@ def preprocess_chronological(data_dir_path, sample_size=100000):
     print(f"\n--- Test Distribution ---")
     print(full_test['Label'].value_counts())
 
-    # ----------------------------------------------------------------
-    # STEP 6: Sample down to manageable size
-    # ----------------------------------------------------------------
+
+ 
+    # ── Sample down to manageable size ── #
+   
     if sample_size is not None:
         # Stratified sampling for training — maintain class proportions
         # but guarantee rare classes survive the downsample
@@ -257,9 +256,9 @@ def preprocess_chronological(data_dir_path, sample_size=100000):
         train_sampled = full_train.sample(frac=1, random_state=42).reset_index(drop=True)
         test_sampled = full_test
 
-    # ----------------------------------------------------------------
-    # STEP 7: Split features and labels
-    # ----------------------------------------------------------------
+    
+    # ── Sample down to manageable size ── #
+
     X_train = train_sampled.drop(columns=["Label"], errors='ignore')
     y_train_raw = train_sampled["Label"]
 
@@ -275,18 +274,17 @@ def preprocess_chronological(data_dir_path, sample_size=100000):
     return X_train, X_test, y_train_raw, y_test_raw
 
 
-# =====================================================================
-# --- TIER 1 TRAINING
-# =====================================================================
+
+
+# ── TIER 1 TRAINING ── #
 
 def execute_tier1_training(X_train_scaled, y_train, class_names):
     print(f"\n--- TIER 1: TRAINING SUPERVISED CLASSIFIER ---")
     return train_lgbm(X_train_scaled, y_train, num_class=len(class_names))
 
 
-# =====================================================================
-# --- TIER 2 TRAINING + SWEEP
-# =====================================================================
+
+# ── TIER 2 TRAINING + SWEEP ── #
 
 def run_operational_boundary_sweep(
     X_train_scaled, X_test_scaled,
@@ -367,9 +365,8 @@ def run_operational_boundary_sweep(
     return anomaly_detector, best_percentile, final_threshold
 
 
-# =====================================================================
-# --- SERIALIZATION
-# =====================================================================
+
+# ── SERIALIZATION ── #
 
 def serialize_system_artifacts(
     script_root, lgbm_model, anomaly_detector,
@@ -393,9 +390,9 @@ def serialize_system_artifacts(
     print(f"Artifacts saved to: {artifacts_dir.resolve()}")
 
 
-# =====================================================================
-# --- MAIN
-# =====================================================================
+
+
+# ── MAIN ── #
 
 if __name__ == "__main__":
     SCRIPT_DIR = Path(__file__).resolve().parent

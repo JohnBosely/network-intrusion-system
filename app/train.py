@@ -1,11 +1,10 @@
 import joblib
 import numpy as np
-import pandas as pd
 from pathlib import Path
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
 from env import FastNetworkDefenseEnv
-from preprocess import preprocess_chronological, scale_features, LabelEncoder
+from preprocess import preprocess_chronological, scale_features
 
 def execute_mass_training():
     print("=============================================")
@@ -101,7 +100,6 @@ def execute_mass_training():
         batch_size=256,
         n_epochs=10,
         verbose=1,
-        # Remove policy_kwargs entirely — back to default [64, 64]
         tensorboard_log=str(ROOT_DIR / "tensorboard_logs")
     )
 
@@ -109,7 +107,7 @@ def execute_mass_training():
     print(f"\n[TRAIN] Launching high-speed loop for {TOTAL_TRAINING_STEPS} steps...")
     agent.learn(total_timesteps=TOTAL_TRAINING_STEPS)
 
-    # 7. Save Final Brain Blueprint
+    # 7. Save The Final Brain Blueprint
     agent.save(ARTIFACTS_FOLDER / "tier3_ppo_agent_scaled")
     print("\n[SUCCESS] Scaled Agent fully optimized and saved successfully!")
 

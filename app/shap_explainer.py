@@ -198,13 +198,13 @@ class ThreatExplainer:
         return verdict
 
 
-# =====================================================================
-# --- SMOKE TEST
-# =====================================================================
+
+
+# ── SMOKE TEST ── #
+
 if __name__ == "__main__":
     import sys
     from preprocess import preprocess_chronological, scale_features
-    from sklearn.preprocessing import LabelEncoder
 
     SCRIPT_DIR = Path(__file__).resolve().parent
     ROOT_DIR = SCRIPT_DIR.parent

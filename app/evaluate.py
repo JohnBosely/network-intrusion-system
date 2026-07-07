@@ -2,17 +2,12 @@ import joblib
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from collections import defaultdict
 from stable_baselines3 import PPO
-
 from preprocess import preprocess_chronological, scale_features
-from sklearn.preprocessing import LabelEncoder
-from env import FastNetworkDefenseEnv
 
 
-# =====================================================================
-# --- ACTION LABELS (for readable output)
-# =====================================================================
+    # ── Action Labels for readbale outputs ── #
+
 ACTION_LABELS = {
     0: "ALLOW",
     1: "THROTTLE",
@@ -49,7 +44,7 @@ def load_artifacts(artifacts_dir: Path):
 def build_observation_matrix(lgbm, iforest, label_encoder, X_test_scaled, anomaly_features):
     """
     Pre-computes the full observation matrix for the test set.
-    Same approach used in train.py — runs inference once up front
+    Same approach used in train.py, it runs inference once up front
     instead of once per step inside the environment.
     """
     print("[EVAL] Running batch inference on test set...")
@@ -92,8 +87,8 @@ def build_observation_matrix(lgbm, iforest, label_encoder, X_test_scaled, anomal
 
 def run_agent_evaluation(agent, obs_matrix, y_test, benign_idx, class_names):
     """
-    Runs the trained PPO agent across every packet in the test set.
-    Records every action taken and compares it to the true label.
+    Runs the trained PPO agent across every packet in the test set,
+    Records every action taken and compares it to the true label,
     Returns a full results DataFrame.
     """
     print("[EVAL] Running agent across test set...")
@@ -160,7 +155,7 @@ def print_overall_metrics(results_df):
 def print_action_distribution(results_df):
     """
     Prints how often each action was chosen overall.
-    This is the most important diagnostic — if the agent is
+    This is the most important diagnostic, if the agent is
     always picking the same action, the policy is degenerate.
     """
     total = len(results_df)
@@ -240,11 +235,11 @@ def print_benign_action_distribution(results_df):
 
 def print_missed_attacks(results_df):
     """
-    Shows which attack types the agent completely missed (ALLOWed through).
-    These are your false negatives — the most dangerous failures.
+    Shows which attack types the agent completely missed (Allowed through).
+    These are the false negatives, basically the most dangerous failures.
     """
     attack_df = results_df[results_df["is_attack"]]
-    missed_df = attack_df[attack_df["action"] == 0]   # ALLOW on an attack = miss
+    missed_df = attack_df[attack_df["action"] == 0]  
 
     print("=" * 54)
     print("  MISSED ATTACKS (agent chose ALLOW on real attacks)")
@@ -270,7 +265,7 @@ def print_missed_attacks(results_df):
 
 def print_policy_verdict(results_df):
     """
-    Prints a plain-English verdict on whether the agent's policy
+    This prints a verdict on whether the agent's policy
     is degenerate, partially learned, or meaningfully learned.
     """
     total          = len(results_df)
@@ -302,8 +297,8 @@ def print_policy_verdict(results_df):
 
     elif attack_recall > 50:
         print(f"  PARTIALLY LEARNED POLICY")
-        print(f"  Attack recall {attack_recall:.1f}% — catching most threats.")
-        print(f"  False alarms at {false_alarm:.1f}% — may need tuning.")
+        print(f"  Attack recall {attack_recall:.1f}%, catching most threats.")
+        print(f"  False alarms at {false_alarm:.1f}%, may need tuning.")
         print(f"  Consider retraining with more steps or adjusted rewards.")
 
     else:
@@ -316,9 +311,7 @@ def print_policy_verdict(results_df):
     print()
 
 
-# =====================================================================
-# --- MAIN EXECUTION
-# =====================================================================
+# ── MAIN ── #
 if __name__ == "__main__":
 
     ANOMALY_FEATURES = [

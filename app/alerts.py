@@ -1,13 +1,13 @@
 """
 alerts.py  — NIDS Alert Manager
----------------------------------
-Fires email notifications and maintains a persistent in-memory alert log
+
+This fires email notifications and maintains a persistent in-memory alert log
 when the RL agent issues ORANGE or RED severity decisions.
 
 Setup (one-time):
     Set these two environment variables before starting the server:
         ALERT_EMAIL_FROM   your Gmail address
-        ALERT_EMAIL_PASS   your Gmail App Password (NOT your account password)
+        ALERT_EMAIL_PASS   your Gmail App Password (NOT your account password please)
         ALERT_EMAIL_TO     recipient email (can be the same address)
 
     Gmail App Password setup:
@@ -31,7 +31,7 @@ from dataclasses import dataclass, field, asdict
 
 logger = logging.getLogger("nids.alerts")
 
-# ─── Config ────────────────────────────────────────────────────────────────────
+# ─── Config ─── #
 
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587
@@ -43,7 +43,7 @@ ALERT_LEVELS = {"ORANGE", "RED"}
 MAX_LOG_SIZE = 200
 
 
-# ─── Alert Record ──────────────────────────────────────────────────────────────
+# ─── Alert Record ─── #
 
 @dataclass
 class AlertRecord:
@@ -60,7 +60,7 @@ class AlertRecord:
         return asdict(self)
 
 
-# ─── Alert Manager ─────────────────────────────────────────────────────────────
+# ─── Alert Manager ─── #
 
 class AlertManager:
     """
@@ -76,11 +76,11 @@ class AlertManager:
         self._email_ready = bool(self._from and self._pass and self._to)
 
         if self._email_ready:
-            print(f"[AlertManager] ✓ Email alerts enabled → {self._to}")
+            print(f"[AlertManager] ✓ Email alerts enabled: {self._to}")
         else:
-            print("[AlertManager] ⚠ Email env vars not set. Alerts will log locally only.")
+            print("[AlertManager] ⚠ Email env vars not set. Alerts will only log locally.")
 
-    # ── Public API ─────────────────────────────────────────────────────────────
+    # ── Public API ── #
 
     def process(
         self,
@@ -113,7 +113,7 @@ class AlertManager:
             ],
         )
 
-        self._log.appendleft(record)  # newest first
+        self._log.appendleft(record) 
         logger.warning(f"[ALERT {alert_level}] {threat_class} | action={action} | confidence={confidence:.2%}")
 
         if self._email_ready:
@@ -126,14 +126,14 @@ class AlertManager:
         return [r.to_dict() for r in list(self._log)[:limit]]
 
     def get_counts(self) -> dict:
-        """Summary counts by alert level — used by dashboard stats."""
+        """Summary counts by alert level used by dashboard stats."""
         counts = {"RED": 0, "ORANGE": 0, "total": 0}
         for r in self._log:
             counts[r.alert_level] = counts.get(r.alert_level, 0) + 1
             counts["total"] += 1
         return counts
 
-    # ── Email ──────────────────────────────────────────────────────────────────
+    # ── Email ── #
 
     def _send_email(self, record: AlertRecord) -> None:
         """Sends a formatted HTML alert email. Fails silently on error."""
@@ -156,7 +156,7 @@ class AlertManager:
             logger.info(f"[AlertManager] Email sent for {record.threat_class} alert.")
 
         except Exception as e:
-            # Never crash the API because of an email failure
+            # This will never crash the API because of an email failure
             logger.error(f"[AlertManager] Email failed: {e}")
 
     def _build_email_body(self, r: AlertRecord) -> str:

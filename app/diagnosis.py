@@ -1,5 +1,3 @@
-import pandas as pd
-import numpy as np
 from pathlib import Path
 from preprocess import preprocess_chronological
 
@@ -11,25 +9,25 @@ X_train, X_test, y_train_raw, y_test_raw = preprocess_chronological(
     sample_size=100000
 )
 
-print("\n=== TRAINING SET LABEL DISTRIBUTION ===")
+print("\n<--- TRAINING SET LABEL DISTRIBUTION --->")
 train_counts = y_train_raw.value_counts()
 print(train_counts)
 
-print("\n=== TEST SET LABEL DISTRIBUTION ===")
+print("\n<--- TEST SET LABEL DISTRIBUTION --->")
 test_counts = y_test_raw.value_counts()
 print(test_counts)
 
-print("\n=== CLASSES MISSING FROM TRAINING ===")
+print("\n<--- CLASSES MISSING FROM TRAINING --->")
 train_classes = set(y_train_raw.unique())
 test_classes = set(y_test_raw.unique())
 missing = test_classes - train_classes
 print(missing if missing else "None")
 
-print("\n=== CLASSES WITH VERY FEW TRAINING EXAMPLES (<100) ===")
+print("\n<--- CLASSES WITH VERY FEW TRAINING EXAMPLES (<100) --->")
 rare = train_counts[train_counts < 100]
 print(rare if len(rare) > 0 else "None")
 
-print("\n=== RATIO: TEST vs TRAIN for each class ===")
+print("\n<--- RATIO: TEST vs TRAIN for each class --->")
 all_classes = sorted(set(y_train_raw.unique()) | set(y_test_raw.unique()))
 print(f"{'Class':<35} {'Train':>8} {'Test':>8} {'Test%':>8}")
 print("-" * 62)
