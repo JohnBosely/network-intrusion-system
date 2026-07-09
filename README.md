@@ -119,11 +119,10 @@ System Architecture
           ┌───────────┼───────────┐
           │           │           │
           ▼           ▼           ▼
-   ┌────────────┐ ┌────────┐ ┌──────────────────┐
-   │ SHAP       │ │ EMAIL  │ │  STREAMLIT       │
-   │ Explainer  │ │ ALERT  │ │  DASHBOARD       │
-   │ (TreeExpl) │ │ (SMTP) │ │  (Live feed)     │
-   └────────────┘ └────────┘ └──────────────────┘
+        SHAP        EMAIL     STREAMLIT       
+       Explain      ALERT     DASHBOARD       
+     (TreeExpl)    (SMTP)    (Live feed)     
+   
 
 
 HOW THE THREE TIERS WORK
