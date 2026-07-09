@@ -9,6 +9,10 @@ dashboard, all fully containerized with Docker.
 
 DASHBOARD
 
+![Dasboard](images/dashboard0.png)
+
+
+
 ![Dasboard](images/DASHBOARD1.png)
 
 
