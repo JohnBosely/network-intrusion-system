@@ -9,11 +9,11 @@ dashboard, all fully containerized with Docker.
 
 DASHBOARD
 
-![Dasboard](images/dashboard0.png)
+![Dashboard](images/dashboard0.png)
 
 
 
-![Dasboard](images/DASHBOARD1.png)
+![Dashboard](images/DASHBOARD1.png)
 
 
 LIVE PACKET FEED
@@ -26,9 +26,9 @@ SHAP EXPLAINER
 
 SECURITY ALERT
 
-![Dasboard](images/SECURITYALERT.jpg)
-![Dasboard](images/SECURITYALERT2.jpg)
-![Dasboard](images/SHAP2.jpg)
+![Dashboard](images/SECURITYALERT.jpg)
+![Dashboard](images/SECURITYALERT2.jpg)
+![Dashboard](images/SHAP2.jpg)
 
 
 
