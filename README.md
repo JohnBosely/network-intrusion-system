@@ -18,7 +18,7 @@ DASHBOARD
 
 LIVE PACKET FEED
 
-![livepacket](images/packetfeed.png)
+![livepacket](images/PACKETFEED.png)
 
 SHAP EXPLAINER
 
